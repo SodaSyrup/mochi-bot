@@ -1,84 +1,88 @@
-# 🍡 Mochi — Invite Tracker & Real-Time Dashboard
+# mochi
 
-<p align="center">
-  <b>A fast, lightweight Discord invite tracking bot with a real-time web dashboard, powered by Bun and SQLite.</b>
-</p>
+A lightweight Discord invite tracking bot with a live web dashboard, built with Bun and SQLite.
 
----
+## Features
 
-## 🌟 Features
+- **Invite tracking**: tracks which invite code was used when a member joins, calculates net invites (`regular + bonus - leaves - fake`), flags accounts newer than 7 days as fake/suspicious, and handles leaves and vanity URLs.
+- **Invite campaign labels**: assign custom labels to invite codes (e.g. `twitter-campaign`, `youtube-promo`) via `/invite-label` or the dashboard to track where traffic comes from.
+- **Safety & AutoMod**: view and configure Discord AutoMod rules directly from the dashboard (keyword filters, mention spam, spam presets, member profiles, server verification levels).
+- **Web dashboard**: live event feed over WebSocket, 7-day join/leave charts, invite code manager, server safety controls, and a built-in simulator for sandbox testing.
+- **Fast & light**: uses `bun:sqlite` (with `better-sqlite3` fallback for Node.js) with WAL mode for fast local storage.
 
-- 📊 **Accurate Invite Tracking**:
-  - Pinpoints exact invite codes and inviters on member join.
-  - Computes Net Invites: `Regular + Bonus - Leaves - Fake`.
-  - Automatically flags young accounts (< 7 days) as suspicious/fake.
-  - Automatically updates inviter statistics when an invitee leaves.
-  - Full vanity URL join detection.
-- 🎁 **Bonus Invites**:
-  - `/bonus-invites add|remove|reset` admin commands.
-  - Web dashboard bonus allocator.
-- 🛡️ **Discord Safety & AutoMod Integration (Discord Server as Source of Truth)**:
-  - Live synchronization with Discord's native AutoMod engine (`guild.autoModerationRules`).
-  - Create, edit, toggle, and delete AutoMod rules directly from the dashboard:
-    - **Keyword & URL Filter**: Block scam domains, phishing links, and wildcards with custom feedback messages.
-    - **Default Presets**: Profanity, Sexual Content, Slurs & Hate Speech detection.
-    - **Mention Spam Protection**: Intercept raid attempts exceeding configurable mention thresholds.
-    - **Suspected Spam Detection**: Leverage Discord ML spam classifier.
-    - **Member Profile Filter**: Block prohibited keywords in user display names.
-  - Server Security Safeguards:
-    - Verification Level (None, Low, Medium, High, Highest).
-    - Explicit Media Content Filter (Disabled, Members without roles, All members).
-    - Default Message Notifications.
-    - Safety Alerts Channel configuration.
-  - Real-Time Live Incident Feed with WebSocket streaming and test bench simulator.
-- 🌐 **Real-Time Web Dashboard**:
-  - Glassmorphic dark aesthetic built with Vanilla CSS & Chart.js.
-  - Real-time WebSocket live feed (joins, leaves, and AutoMod interceptions animate instantly).
-  - Joins vs Departures 7-day analytics chart.
-  - Active invite codes inspector with custom labels.
-  - Built-in test simulator.
-- ⚡ **Bun + SQLite Architecture**:
-  - Powered by native `bun:sqlite` with WAL mode.
-  - Starts in milliseconds with only ~12 MB memory footprint.
+## Setup
 
-## 🚀 Quick Start Guide
+### Prerequisites
 
-### 1. Clone & Configure Environment
-```bash
-cp .env.example .env
-```
-Fill in your `DISCORD_TOKEN`, `CLIENT_ID`, and other configuration options in `.env`.
+- [Bun](https://bun.sh) (v1.0+) or [Node.js](https://nodejs.org) (v18+)
+- A Discord Bot Application from the [Discord Developer Portal](https://discord.com/developers/applications)
 
-### 2. Start Development Server
-```bash
-bun install
-bun dev
-```
-Open **`http://localhost:3000`** in your browser.
+### Installation
 
-### 3. Deploy Slash Commands
-```bash
-bun run deploy-commands
-```
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/SodaSyrup/mochi-bot.git
+   cd mochi-bot
+   bun install
+   ```
 
----
+2. Configure environment variables:
+   ```bash
+   cp .env.example .env
+   ```
+   Open `.env` and fill in your credentials:
+   - `DISCORD_TOKEN`: Bot token
+   - `CLIENT_ID`: Application client ID
+   - `CLIENT_SECRET`: OAuth2 client secret (for dashboard login)
+   - `SESSION_SECRET`: Random secret string for session cookies
 
-## 📋 Slash Commands
+3. Deploy slash commands:
+   ```bash
+   bun run deploy-commands
+   ```
 
-- `/invites [user]` — Check invite stats (Net, Regular, Bonus, Leaves, Fake)
-- `/leaderboard [page]` — Top server inviters
-- `/invite-codes [user]` — List active server invite links & uses
-- `/bonus-invites <add|remove|reset>` — Manage bonus invites *(Admin)*
-- `/botinfo` — System telemetry and uptime
-- `/ping` — WebSocket latency
-- `/help` — Help guide and dashboard link
+4. Start the application:
+   ```bash
+   bun dev
+   ```
+   The dashboard runs at `http://localhost:3000`.
 
----
+> **Sandbox Mode:** If `DISCORD_TOKEN` is left blank or `DEMO_MODE=true` is set in `.env`, the bot and dashboard run in simulated sandbox mode so you can test all features without connecting to live Discord.
 
-## 🧪 Tests
+## Slash Commands
+
+| Command | Description | Permission |
+| --- | --- | --- |
+| `/invites [user]` | Check invite stats (net, regular, bonus, leaves, fake) | Everyone |
+| `/leaderboard [page]` | Server invite leaderboard | Everyone |
+| `/invite-codes [user]` | List active invite links and usage count | Everyone |
+| `/invite-label <code> [label]` | Set or remove a campaign label on an invite link | Manage Server |
+| `/serverinfo` | Server details, channel counts, and invite telemetry | Everyone |
+| `/userinfo [user]` | User account info, join date, and who invited them | Everyone |
+| `/botinfo` | Bot system telemetry and uptime | Everyone |
+| `/ping` | WebSocket latency | Everyone |
+| `/help` | Command reference and dashboard link | Everyone |
+
+## Dashboard Pages
+
+- `/` — Server overview, quick stats, and real-time live event feed
+- `/analytics` — 7-day join vs leave trends and conversion metrics
+- `/leaderboard` — Complete server inviter rankings
+- `/codes` — Active invite codes with usage counters and custom labels
+- `/safety` — Discord AutoMod rules and server security settings
+- `/settings` — Welcome/leave channel config, custom message templates, and bot options
+- `/simulator` — Sandbox test bench to simulate member joins, leaves, and AutoMod triggers
+
+## Testing
+
+Run the test suite:
 
 ```bash
 bun test
 # or
 bun run tests/runAll.js
 ```
+
+## License
+
+MIT
