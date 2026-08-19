@@ -82,7 +82,3 @@ bun test
 # or
 bun run tests/runAll.js
 ```
-
-## License
-
-MIT
