@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mochi 🍡 • Active Invite Codes & Labels</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍡</text></svg>">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-logo">🍡</div>
+        <div class="brand-title">
+          <h1>Mochi</h1>
+          <span class="badge" id="bot-mode-badge">SANDBOX</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Invite Tracker</div>
+        <a class="nav-item" href="/"><i class="fa-solid fa-chart-pie"></i> Overview</a>
+        <a class="nav-item" href="/analytics"><i class="fa-solid fa-chart-line"></i> Analytics</a>
+        <a class="nav-item" href="/leaderboard"><i class="fa-solid fa-trophy"></i> Leaderboard</a>
+        <a class="nav-item active" href="/codes"><i class="fa-solid fa-link"></i> Active Codes</a>
+
+        <div class="nav-section-title">Moderation & Safety</div>
+        <a class="nav-item" href="/safety"><i class="fa-solid fa-shield-halved"></i> Safety & AutoMod</a>
+
+        <div class="nav-section-title">System</div>
+        <a class="nav-item" href="/simulator"><i class="fa-solid fa-flask"></i> Simulator</a>
+        <a class="nav-item" href="/settings"><i class="fa-solid fa-sliders"></i> Settings</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-pill">
+          <div class="status-dot sandbox" id="status-dot"></div>
+          <span id="bot-status-text">Mochi Engine Online</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="guild-selector-container">
+          <label for="guild-select" style="font-size: 12px; color: var(--text-dim);"><i class="fa-solid fa-server"></i> Guild:</label>
+          <select id="guild-select" class="guild-selector">
+            <option value="loading">Loading Servers...</option>
+          </select>
+        </div>
+
+        <div class="user-profile">
+          <div class="user-meta">
+            <div class="user-name" id="user-name">MochiAdmin</div>
+            <div class="user-role" id="user-role">Server Administrator</div>
+          </div>
+          <img src="https://cdn.discordapp.com/embed/avatars/0.png" alt="Avatar" class="user-avatar" id="user-avatar">
+        </div>
+      </header>
+
+      <!-- Page Views -->
+      <div class="page-container">
+        <section id="codes-view" class="view-section active">
+          <div class="page-header">
+            <div>
+              <h2><i class="fa-solid fa-link" style="color: var(--accent-purple);"></i> Active Invite Codes & Labels</h2>
+              <p>Create, label, and manage active Discord invite links with custom campaign tags.</p>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <button class="btn btn-primary" onclick="codesPage.openCreateInviteModal()"><i class="fa-solid fa-plus"></i> Create Invite</button>
+              <button class="btn btn-secondary btn-sm" onclick="codesPage.fetchActiveCodes()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+            </div>
+          </div>
+
+          <!-- Filter & Search toolbar -->
+          <div class="glass-panel" style="padding: 16px 20px; margin-bottom: 16px;">
+            <div style="display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+              <div style="display: flex; gap: 12px; align-items: center; flex: 1; min-width: 260px;">
+                <div class="search-input-wrapper" style="position: relative; flex: 1;">
+                  <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-dim); font-size: 13px;"></i>
+                  <input type="text" id="codes-search-input" class="form-input" placeholder="Search by invite code, label, or creator..." style="padding-left: 38px;" oninput="codesPage.filterCodes()">
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <span style="font-size: 13px; color: var(--text-dim);"><i class="fa-solid fa-tag"></i> Filter:</span>
+                <button class="filter-btn active" data-filter="all" onclick="codesPage.setCodesFilter('all')">All Codes</button>
+                <button class="filter-btn" data-filter="labeled" onclick="codesPage.setCodesFilter('labeled')">🏷️ Labeled</button>
+                <button class="filter-btn" data-filter="unlabeled" onclick="codesPage.setCodesFilter('unlabeled')">Unlabeled</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="glass-panel">
+            <div class="table-responsive">
+              <table class="mochi-table" id="codes-table">
+                <thead>
+                  <tr>
+                    <th>Invite Link</th>
+                    <th>Campaign Label</th>
+                    <th>Destination Channel</th>
+                    <th>Uses / Limit</th>
+                    <th>Creator</th>
+                    <th style="text-align: right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="6" style="text-align: center; color: var(--text-dim);">Loading active codes...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Create Invite Modal -->
+  <div id="create-invite-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent-purple);"></i> Create Discord Invite</div>
+        <button class="modal-close-btn" onclick="codesPage.closeCreateInviteModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Destination Channel -->
+        <div class="form-group">
+          <label class="form-label"><i class="fa-solid fa-hashtag"></i> Destination Channel</label>
+          <select id="create-invite-channel" class="form-select">
+            <option value="loading">Loading server channels...</option>
+          </select>
+        </div>
+
+        <!-- Custom Label -->
+        <div class="form-group">
+          <label class="form-label"><i class="fa-solid fa-tag"></i> Campaign / Custom Label <span style="font-weight: 400; color: var(--text-dim);">(Optional)</span></label>
+          <input type="text" id="create-invite-label" class="form-input" placeholder="e.g. YouTube Video Promo, Partner Sponsorship, Twitter..." maxlength="60" oninput="codesPage.updatePreview()">
+          
+          <!-- Suggestion Chips -->
+          <div class="chip-container" style="margin-top: 8px;">
+            <span class="chip" onclick="codesPage.setLabelSuggestion('🌸 Official Link')">🌸 Official Link</span>
+            <span class="chip" onclick="codesPage.setLabelSuggestion('🐦 Twitter / X')">🐦 Twitter / X</span>
+            <span class="chip" onclick="codesPage.setLabelSuggestion('📺 YouTube Promo')">📺 YouTube Promo</span>
+            <span class="chip" onclick="codesPage.setLabelSuggestion('🎮 Twitch Stream')">🎮 Twitch Stream</span>
+            <span class="chip" onclick="codesPage.setLabelSuggestion('🤝 Partner Collab')">🤝 Partner Collab</span>
+            <span class="chip" onclick="codesPage.setLabelSuggestion('🎁 Giveaway')">🎁 Giveaway</span>
+          </div>
+        </div>
+
+        <!-- Duration & Max Uses Grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div class="form-group">
+            <label class="form-label"><i class="fa-solid fa-clock"></i> Expiration Time</label>
+            <select id="create-invite-max-age" class="form-select" onchange="codesPage.updatePreview()">
+              <option value="0" selected>Never (Permanent)</option>
+              <option value="1800">30 Minutes</option>
+              <option value="3600">1 Hour</option>
+              <option value="21600">6 Hours</option>
+              <option value="43200">12 Hours</option>
+              <option value="86400">1 Day</option>
+              <option value="604800">7 Days</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label"><i class="fa-solid fa-users"></i> Max Number of Uses</label>
+            <select id="create-invite-max-uses" class="form-select" onchange="codesPage.updatePreview()">
+              <option value="0" selected>Unlimited Uses</option>
+              <option value="1">1 Use</option>
+              <option value="5">5 Uses</option>
+              <option value="10">10 Uses</option>
+              <option value="25">25 Uses</option>
+              <option value="50">50 Uses</option>
+              <option value="100">100 Uses</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Temporary Toggle -->
+        <div class="form-group">
+          <label class="form-toggle">
+            <div>
+              <div style="font-weight: 600; font-size: 14px;">Temporary Membership</div>
+              <div style="font-size: 12px; color: var(--text-dim);">Kick members automatically when they disconnect if no role is assigned</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="create-invite-temp">
+              <span class="slider"></span>
+            </label>
+          </label>
+        </div>
+
+        <!-- Live Invite Card Preview -->
+        <div class="preview-panel">
+          <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px;">
+            <i class="fa-solid fa-eye"></i> Invite Live Preview
+          </div>
+          <div class="preview-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div class="preview-icon"><i class="fa-solid fa-link"></i></div>
+                <div>
+                  <div style="font-weight: 700; font-size: 14px; font-family: var(--font-mono); color: #fff;" id="preview-url">https://discord.gg/mochi-preview</div>
+                  <div style="font-size: 12px; color: var(--text-muted);" id="preview-details">Destination: #general • Unlimited uses • Never expires</div>
+                </div>
+              </div>
+              <div id="preview-badge-container">
+                <span class="badge-label" id="preview-badge"><i class="fa-solid fa-tag"></i> General</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="codesPage.closeCreateInviteModal()">Cancel</button>
+        <button class="btn btn-primary" id="btn-submit-create-invite" onclick="codesPage.submitCreateInvite()">
+          <i class="fa-solid fa-paper-plane"></i> Create & Generate Invite
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Label Modal -->
+  <div id="edit-label-modal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 460px;">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fa-solid fa-tag" style="color: var(--accent-purple);"></i> Edit Invite Label</div>
+        <button class="modal-close-btn" onclick="codesPage.closeEditLabelModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="modal-body">
+        <div style="margin-bottom: 16px; padding: 12px; background: rgba(10, 14, 24, 0.6); border: 1px solid var(--border-glass); border-radius: var(--radius-sm);">
+          <div style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">Invite Code</div>
+          <div style="font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: var(--accent-purple); margin-top: 4px;" id="edit-modal-code-display">discord.gg/code</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Campaign / Target Label</label>
+          <input type="text" id="edit-label-input" class="form-input" placeholder="e.g. YouTube Video, Twitch Stream, Partner..." maxlength="60">
+          
+          <div class="chip-container" style="margin-top: 8px;">
+            <span class="chip" onclick="document.getElementById('edit-label-input').value = '🌸 Official Server'">🌸 Official Server</span>
+            <span class="chip" onclick="document.getElementById('edit-label-input').value = '🐦 Twitter / X'">🐦 Twitter / X</span>
+            <span class="chip" onclick="document.getElementById('edit-label-input').value = '📺 YouTube Video'">📺 YouTube Video</span>
+            <span class="chip" onclick="document.getElementById('edit-label-input').value = '🤝 Partner Collab'">🤝 Partner Collab</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button class="btn btn-danger btn-sm" onclick="codesPage.removeInviteLabel()"><i class="fa-solid fa-trash"></i> Remove Label</button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary btn-sm" onclick="codesPage.closeEditLabelModal()">Cancel</button>
+          <button class="btn btn-primary btn-sm" onclick="codesPage.submitEditLabel()"><i class="fa-solid fa-check"></i> Save Label</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script src="/js/shared.js"></script>
+  <script src="/js/pages/codes.js"></script>
+</body>
+</html>

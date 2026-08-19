@@ -1,0 +1,37 @@
+{
+  "name": "mochi-bot",
+  "version": "1.0.0",
+  "description": "Mochi - An All-Purpose Discord Bot with Invite Tracking & Real-Time Web Dashboard",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "bun src/index.js",
+    "dev": "bun --watch src/index.js",
+    "node:start": "node src/index.js",
+    "node:dev": "node --watch src/index.js",
+    "deploy-commands": "bun src/bot/deploy.js",
+    "test": "bun run tests/runAll.js",
+    "test:node": "node tests/runAll.js"
+  },
+  "keywords": [
+    "discord-bot",
+    "invite-tracker",
+    "dashboard",
+    "moderation",
+    "discordjs",
+    "mochi"
+  ],
+  "author": "Mochi Team",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "morgan": "^1.11.0",
+    "socket.io": "^4.8.3"
+  }
+}

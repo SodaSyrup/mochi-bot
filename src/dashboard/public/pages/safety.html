@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mochi 🍡 • Safety & AutoMod Control Center</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍡</text></svg>">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-logo">🍡</div>
+        <div class="brand-title">
+          <h1>Mochi</h1>
+          <span class="badge" id="bot-mode-badge">SANDBOX</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Invite Tracker</div>
+        <a class="nav-item" href="/"><i class="fa-solid fa-chart-pie"></i> Overview</a>
+        <a class="nav-item" href="/analytics"><i class="fa-solid fa-chart-line"></i> Analytics</a>
+        <a class="nav-item" href="/leaderboard"><i class="fa-solid fa-trophy"></i> Leaderboard</a>
+        <a class="nav-item" href="/codes"><i class="fa-solid fa-link"></i> Active Codes</a>
+
+        <div class="nav-section-title">Moderation & Safety</div>
+        <a class="nav-item active" href="/safety"><i class="fa-solid fa-shield-halved"></i> Safety & AutoMod</a>
+
+        <div class="nav-section-title">System</div>
+        <a class="nav-item" href="/simulator"><i class="fa-solid fa-flask"></i> Simulator</a>
+        <a class="nav-item" href="/settings"><i class="fa-solid fa-sliders"></i> Settings</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-pill">
+          <div class="status-dot sandbox" id="status-dot"></div>
+          <span id="bot-status-text">Mochi Engine Online</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="guild-selector-container">
+          <label for="guild-select" style="font-size: 12px; color: var(--text-dim);"><i class="fa-solid fa-server"></i> Guild:</label>
+          <select id="guild-select" class="guild-selector">
+            <option value="loading">Loading Servers...</option>
+          </select>
+        </div>
+
+        <div class="user-profile">
+          <div class="user-meta">
+            <div class="user-name" id="user-name">MochiAdmin</div>
+            <div class="user-role" id="user-role">Server Administrator</div>
+          </div>
+          <img src="https://cdn.discordapp.com/embed/avatars/0.png" alt="Avatar" class="user-avatar" id="user-avatar">
+        </div>
+      </header>
+
+      <!-- Page Views -->
+      <div class="page-container">
+        <section id="safety-view" class="view-section active">
+          <!-- Page Header -->
+          <div class="page-header">
+            <div>
+              <h2><i class="fa-solid fa-shield-halved" style="color: var(--accent-pink);"></i> Discord Safety & AutoMod Center</h2>
+              <p>Configure Discord native AutoMod rules and server-level protection. Discord server is the live source of truth.</p>
+            </div>
+            <div class="header-actions">
+              <button class="btn btn-secondary btn-sm" onclick="safetyPage.refreshAll()"><i class="fa-solid fa-rotate"></i> Sync from Discord</button>
+              <button class="btn btn-primary btn-sm" onclick="safetyPage.openCreateModal()"><i class="fa-solid fa-plus"></i> Create AutoMod Rule</button>
+            </div>
+          </div>
+
+          <!-- Quick Stats Grid -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e;"><i class="fa-solid fa-shield-virus"></i></div>
+              <div class="stat-info">
+                <div class="stat-title">AutoMod Rules</div>
+                <div class="stat-value" id="stat-total-rules">0</div>
+                <div class="stat-subtitle" id="stat-active-rules">0 active on server</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: rgba(139, 92, 246, 0.15); color: #8b5cf6;"><i class="fa-solid fa-lock"></i></div>
+              <div class="stat-info">
+                <div class="stat-title">Verification Level</div>
+                <div class="stat-value" id="stat-verification-text" style="font-size: 18px;">Low (Email)</div>
+                <div class="stat-subtitle">Account gatekeeper</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4;"><i class="fa-solid fa-filter"></i></div>
+              <div class="stat-info">
+                <div class="stat-title">Media Filter</div>
+                <div class="stat-value" id="stat-explicit-text" style="font-size: 18px;">No Roles Only</div>
+                <div class="stat-subtitle">Explicit media scan</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;"><i class="fa-solid fa-bolt"></i></div>
+              <div class="stat-info">
+                <div class="stat-title">Live Protection</div>
+                <div class="stat-value" id="stat-shield-status" style="color: #10b981; font-size: 18px;">ARMED</div>
+                <div class="stat-subtitle" id="stat-source-truth">Source: Discord Gateway</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Two Column Layout: Server Security Settings & Incident Feed -->
+          <div class="dashboard-grid-2" style="margin-top: 24px;">
+            <!-- Server Safety & Onboarding Security -->
+            <div class="glass-panel">
+              <div class="panel-header">
+                <h3><i class="fa-solid fa-sliders" style="color: var(--accent-cyan);"></i> Server Security Safeguards</h3>
+                <span class="badge" style="background: rgba(139, 92, 246, 0.2); color: #c084fc;">Discord Source of Truth</span>
+              </div>
+              <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+                Changes applied here instantly update the server configuration on Discord.
+              </p>
+
+              <form id="guild-safety-form" onsubmit="safetyPage.saveSafetySettings(event)">
+                <div class="form-group">
+                  <label class="form-label" for="setting-verification-level"><i class="fa-solid fa-user-shield"></i> Verification Level</label>
+                  <select id="setting-verification-level" class="form-control">
+                    <option value="0">None (Unrestricted)</option>
+                    <option value="1" selected>Low (Must have verified email)</option>
+                    <option value="2">Medium (Registered on Discord for &gt; 5 mins)</option>
+                    <option value="3">High (Member of server for &gt; 10 mins)</option>
+                    <option value="4">Highest (Must have verified phone number)</option>
+                  </select>
+                  <div class="form-help">Members must meet these criteria before sending messages in text channels.</div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="setting-explicit-filter"><i class="fa-solid fa-eye-slash"></i> Explicit Media Content Filter</label>
+                  <select id="setting-explicit-filter" class="form-control">
+                    <option value="0">Don't scan any media content</option>
+                    <option value="1" selected>Scan media from members without a role</option>
+                    <option value="2">Scan media from all members</option>
+                  </select>
+                  <div class="form-help">Automatically scan and delete explicit imagery sent in channels.</div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="setting-notifications"><i class="fa-solid fa-bell"></i> Default Message Notifications</label>
+                  <select id="setting-notifications" class="form-control">
+                    <option value="0">All Messages (Chatty)</option>
+                    <option value="1" selected>Only @mentions (Recommended)</option>
+                  </select>
+                  <div class="form-help">Default notification setting for newly joined members.</div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="setting-safety-channel"><i class="fa-solid fa-bullhorn"></i> Safety Alerts Channel</label>
+                  <select id="setting-safety-channel" class="form-control">
+                    <option value="">No Safety Channel Selected</option>
+                  </select>
+                  <div class="form-help">Discord sends AutoMod alerts and security warnings here.</div>
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="btn-save-safety"><i class="fa-solid fa-floppy-disk"></i> Apply Security Settings</button>
+              </form>
+            </div>
+
+            <!-- Live Safety Audit & AutoMod Incident Stream -->
+            <div class="glass-panel">
+              <div class="panel-header">
+                <h3><i class="fa-solid fa-tower-broadcast" style="color: var(--accent-pink);"></i> Live AutoMod Incident Feed</h3>
+                <button class="btn btn-secondary btn-xs" onclick="safetyPage.simulateIncident()"><i class="fa-solid fa-vial"></i> Test Trigger</button>
+              </div>
+              <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
+                Real-time stream of AutoMod action executions and blocked offenses.
+              </p>
+
+              <div class="incident-feed-container" id="incident-feed-list">
+                <div class="feed-empty-state" id="feed-empty-msg">
+                  <i class="fa-solid fa-shield-check" style="font-size: 32px; color: var(--accent-emerald); margin-bottom: 8px;"></i>
+                  <div>All systems secure. No recent infractions recorded.</div>
+                  <div style="font-size: 12px; color: var(--text-dim); margin-top: 4px;">Click "Test Trigger" to test a live violation.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AutoMod Rules Management Section -->
+          <div class="glass-panel" style="margin-top: 24px;">
+            <div class="panel-header">
+              <div>
+                <h3><i class="fa-solid fa-robot" style="color: var(--accent-purple);"></i> Configured AutoMod Rules</h3>
+                <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Directly synchronized with the Discord Server AutoMod engine.</p>
+              </div>
+              <div class="rules-filter-bar">
+                <button class="filter-chip active" data-filter="all" onclick="safetyPage.filterRules('all', this)">All (<span id="count-filter-all">0</span>)</button>
+                <button class="filter-chip" data-filter="keyword" onclick="safetyPage.filterRules('keyword', this)">Keyword / URL (<span id="count-filter-keyword">0</span>)</button>
+                <button class="filter-chip" data-filter="spam" onclick="safetyPage.filterRules('spam', this)">Spam (<span id="count-filter-spam">0</span>)</button>
+                <button class="filter-chip" data-filter="mention" onclick="safetyPage.filterRules('mention', this)">Mentions (<span id="count-filter-mention">0</span>)</button>
+                <button class="filter-chip" data-filter="preset" onclick="safetyPage.filterRules('preset', this)">Presets (<span id="count-filter-preset">0</span>)</button>
+              </div>
+            </div>
+
+            <!-- Rules Cards Container -->
+            <div class="automod-rules-grid" id="automod-rules-container">
+              <div class="loading-spinner" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 24px; color: var(--accent-purple);"></i>
+                <div style="margin-top: 8px;">Fetching AutoMod rules from Discord server...</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Create / Edit AutoMod Rule Modal -->
+  <div class="modal-overlay" id="rule-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="rule-modal-title"><i class="fa-solid fa-shield-plus" style="color: var(--accent-pink);"></i> Create AutoMod Rule</h3>
+        <button class="modal-close-btn" onclick="safetyPage.closeRuleModal()">&times;</button>
+      </div>
+
+      <form id="rule-modal-form" onsubmit="safetyPage.submitRuleForm(event)">
+        <input type="hidden" id="rule-edit-id" value="">
+
+        <!-- Rule Name -->
+        <div class="form-group">
+          <label class="form-label" for="rule-name"><i class="fa-solid fa-tag"></i> Rule Name *</label>
+          <input type="text" id="rule-name" class="form-control" placeholder="e.g., 🛡️ Block Scam & Phishing Links" required>
+        </div>
+
+        <!-- Trigger Type -->
+        <div class="form-group">
+          <label class="form-label" for="rule-trigger-type"><i class="fa-solid fa-crosshairs"></i> Trigger Type</label>
+          <select id="rule-trigger-type" class="form-control" onchange="safetyPage.onTriggerTypeChange(this.value)">
+            <option value="1">Keyword / Custom Words Filter (Blocks specific terms or wildcards)</option>
+            <option value="4">Default Keyword Presets (Profanity, Sexual Content, Slurs)</option>
+            <option value="5">Mention Spam Filter (Limits max user/role mentions per message)</option>
+            <option value="3">Suspected Spam Filter (Discord ML Spam Detection)</option>
+            <option value="6">Member Profile (Filter words in Display Names & Nicknames)</option>
+          </select>
+        </div>
+
+        <!-- Dynamic Trigger Config: Keywords / Regex -->
+        <div id="trigger-config-keyword" class="trigger-config-section">
+          <div class="form-group">
+            <label class="form-label" for="rule-keywords"><i class="fa-solid fa-font"></i> Keywords & Wildcards (Comma or newline separated)</label>
+            <textarea id="rule-keywords" class="form-control" rows="3" placeholder="*discord.gg/*, *nitro-gift*, steamcommunity-login.*"></textarea>
+            <div class="form-help">Use <code>*term*</code> for substring matches, or exact words. Max 1,000 keywords.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="rule-regex"><i class="fa-solid fa-code"></i> Regex Patterns (Optional, one per line)</label>
+            <textarea id="rule-regex" class="form-control" rows="2" placeholder="https?:\/\/(?:www\.)?dis[c|k]ord-nitro\.[a-z]{2,8}"></textarea>
+            <div class="form-help">Standard regex syntax evaluated against message text.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="rule-allowlist"><i class="fa-solid fa-check-double"></i> Allow-List / Exempt Words (Optional)</label>
+            <input type="text" id="rule-allowlist" class="form-control" placeholder="discord.gg/mochihangout, partner-code">
+          </div>
+        </div>
+
+        <!-- Dynamic Trigger Config: Presets -->
+        <div id="trigger-config-preset" class="trigger-config-section" style="display: none;">
+          <div class="form-group">
+            <label class="form-label"><i class="fa-solid fa-list-check"></i> Discord Built-in Presets</label>
+            <div class="checkbox-group">
+              <label class="custom-checkbox">
+                <input type="checkbox" id="preset-profanity" value="1" checked>
+                <span>Profanity Filter</span>
+              </label>
+              <label class="custom-checkbox">
+                <input type="checkbox" id="preset-sexual" value="2" checked>
+                <span>Sexual Content</span>
+              </label>
+              <label class="custom-checkbox">
+                <input type="checkbox" id="preset-slurs" value="3" checked>
+                <span>Hate Speech & Slurs</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dynamic Trigger Config: Mention Spam -->
+        <div id="trigger-config-mention" class="trigger-config-section" style="display: none;">
+          <div class="form-group">
+            <label class="form-label" for="rule-mention-limit"><i class="fa-solid fa-at"></i> Max Unique Mentions Allowed per Message</label>
+            <input type="number" id="rule-mention-limit" class="form-control" min="1" max="50" value="5">
+            <div class="form-help">Messages exceeding this number of mentions will be automatically intercepted.</div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="form-group">
+          <label class="form-label"><i class="fa-solid fa-hand-holding-hand"></i> Enforcement Actions</label>
+          <div class="checkbox-group">
+            <label class="custom-checkbox">
+              <input type="checkbox" id="action-block" value="1" checked onchange="safetyPage.toggleActionBlock(this.checked)">
+              <span>Block Message</span>
+            </label>
+            <label class="custom-checkbox">
+              <input type="checkbox" id="action-alert" value="2" onchange="safetyPage.toggleActionAlert(this.checked)">
+              <span>Send Alert to Channel</span>
+            </label>
+            <label class="custom-checkbox">
+              <input type="checkbox" id="action-timeout" value="3" onchange="safetyPage.toggleActionTimeout(this.checked)">
+              <span>Timeout User (Mute)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Block Custom Message -->
+        <div class="form-group" id="action-block-config">
+          <label class="form-label" for="rule-custom-message">Custom Block Feedback (Shown to user)</label>
+          <input type="text" id="rule-custom-message" class="form-control" placeholder="🛑 Your message was blocked due to server safety policy.">
+        </div>
+
+        <!-- Alert Channel Selection -->
+        <div class="form-group" id="action-alert-config" style="display: none;">
+          <label class="form-label" for="rule-alert-channel">Alert Channel</label>
+          <select id="rule-alert-channel" class="form-control">
+            <option value="">Select channel...</option>
+          </select>
+        </div>
+
+        <!-- Timeout Duration Selection -->
+        <div class="form-group" id="action-timeout-config" style="display: none;">
+          <label class="form-label" for="rule-timeout-duration">Timeout Duration</label>
+          <select id="rule-timeout-duration" class="form-control">
+            <option value="60">1 Minute</option>
+            <option value="300" selected>5 Minutes</option>
+            <option value="600">10 Minutes</option>
+            <option value="3600">1 Hour</option>
+            <option value="86400">1 Day</option>
+            <option value="604800">1 Week</option>
+          </select>
+        </div>
+
+        <!-- Exemptions: Roles & Channels -->
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label" for="rule-exempt-roles"><i class="fa-solid fa-users-slash"></i> Exempt Roles</label>
+            <select id="rule-exempt-roles" class="form-control" multiple size="3" style="height: auto;">
+            </select>
+            <div class="form-help">Hold Ctrl/Cmd to select multiple.</div>
+          </div>
+
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label" for="rule-exempt-channels"><i class="fa-solid fa-hashtag"></i> Exempt Channels</label>
+            <select id="rule-exempt-channels" class="form-control" multiple size="3" style="height: auto;">
+            </select>
+            <div class="form-help">Hold Ctrl/Cmd to select multiple.</div>
+          </div>
+        </div>
+
+        <!-- Rule Enabled Toggle -->
+        <div class="form-group">
+          <label class="custom-checkbox">
+            <input type="checkbox" id="rule-enabled" checked>
+            <span><b>Enable Rule Immediately on Discord Server</b></span>
+          </label>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="safetyPage.closeRuleModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-rule"><i class="fa-solid fa-shield-check"></i> Save Rule to Discord</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script src="/js/shared.js"></script>
+  <script src="/js/pages/safety.js"></script>
+</body>
+</html>

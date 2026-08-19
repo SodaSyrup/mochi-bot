@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mochi 🍡 • Invite Analytics</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍡</text></svg>">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-logo">🍡</div>
+        <div class="brand-title">
+          <h1>Mochi</h1>
+          <span class="badge" id="bot-mode-badge">SANDBOX</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Invite Tracker</div>
+        <a class="nav-item" href="/"><i class="fa-solid fa-chart-pie"></i> Overview</a>
+        <a class="nav-item active" href="/analytics"><i class="fa-solid fa-chart-line"></i> Analytics</a>
+        <a class="nav-item" href="/leaderboard"><i class="fa-solid fa-trophy"></i> Leaderboard</a>
+        <a class="nav-item" href="/codes"><i class="fa-solid fa-link"></i> Active Codes</a>
+
+        <div class="nav-section-title">Moderation & Safety</div>
+        <a class="nav-item" href="/safety"><i class="fa-solid fa-shield-halved"></i> Safety & AutoMod</a>
+
+        <div class="nav-section-title">System</div>
+        <a class="nav-item" href="/simulator"><i class="fa-solid fa-flask"></i> Simulator</a>
+        <a class="nav-item" href="/settings"><i class="fa-solid fa-sliders"></i> Settings</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-pill">
+          <div class="status-dot sandbox" id="status-dot"></div>
+          <span id="bot-status-text">Mochi Engine Online</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="guild-selector-container">
+          <label for="guild-select" style="font-size: 12px; color: var(--text-dim);"><i class="fa-solid fa-server"></i> Guild:</label>
+          <select id="guild-select" class="guild-selector">
+            <option value="loading">Loading Servers...</option>
+          </select>
+        </div>
+
+        <div class="user-profile">
+          <div class="user-meta">
+            <div class="user-name" id="user-name">MochiAdmin</div>
+            <div class="user-role" id="user-role">Server Administrator</div>
+          </div>
+          <img src="https://cdn.discordapp.com/embed/avatars/0.png" alt="Avatar" class="user-avatar" id="user-avatar">
+        </div>
+      </header>
+
+      <!-- Page Views -->
+      <div class="page-container">
+        <section id="analytics-view" class="view-section active">
+          <div class="page-header">
+            <div>
+              <h2><i class="fa-solid fa-chart-line" style="color: var(--accent-cyan);"></i> Invite Analytics & Growth</h2>
+              <p>Historical trends for joins, leaves, and fake account detection.</p>
+            </div>
+            <div>
+              <button class="btn btn-secondary btn-sm" onclick="analyticsPage.fetchAnalytics()"><i class="fa-solid fa-rotate"></i> Refresh Chart</button>
+            </div>
+          </div>
+
+          <div class="glass-panel">
+            <div class="panel-header">
+              <div class="panel-title"><i class="fa-solid fa-wave-square"></i> Joins vs Departures (Last 7 Days)</div>
+            </div>
+            <div style="height: 340px; position: relative;">
+              <canvas id="growthChart"></canvas>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script src="/js/shared.js"></script>
+  <script src="/js/pages/analytics.js"></script>
+</body>
+</html>
