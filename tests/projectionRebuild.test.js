@@ -56,7 +56,7 @@ async function runProjectionRebuildTests() {
   suite.test('bonus adjustment with zero member events rebuilds an inviter whose total reflects only bonus', () => {
     const db = createTestDb();
     const { invites } = createRepos(db);
-    invites.addBonus({ guildId: 'g', userId: 'inv', amount: 7, reason: 'legacy bonus' });
+    invites.addBonus({ guildId: 'g', userId: 'inv', amount: 7, reason: 'manual bonus' });
 
     invites.rebuildGuildProjections('g');
 

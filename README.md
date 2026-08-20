@@ -148,17 +148,23 @@ node scripts/rebuild-invite-projections.js --guild <guildId>     # one guild
 node scripts/rebuild-invite-projections.js --guild <guildId> --dry-run   # preview only, no writes
 ```
 
-### Upgrading an existing database
+### Migrations & the fresh database baseline
 
-Migration 3 (`backfill-invite-ledger`) synthesizes lifecycle events from existing `invite_members` rows, imports non-zero bonus values as one adjustment per inviter, and rebuilds projections. It is idempotent and recorded in `schema_migrations`. **Back up your database first:**
+Mochi uses versioned SQLite migrations. Because the project is currently pre-release, the schema history was consolidated into a single clean initial migration instead of a chain of same-day prototype compatibility migrations.
+
+- `001` — the initial baseline: the complete current schema (durable invite ledger, bonus adjustments, projections, statistics view, invite cache/labels, guild settings). It runs once on any empty database.
+- `002+` — future schema changes. There is no legacy migration history: fresh databases start at `001`, and every subsequent real change is simply the next numbered migration.
+
+Existing development databases are disposable during this pre-release stage. After changing the baseline, reset them explicitly (this is a manual developer action, never something the application does at startup):
 
 ```bash
-cp data/mochi.sqlite data/mochi.sqlite.bak
+rm data/mochi.sqlite
+rm data/mochi-demo.sqlite
 ```
 
-Before rebuilding, migration 3 archives the old mutable aggregate counters into `legacy_inviter_stats_snapshot` and the old daily statistics into `legacy_daily_invite_stats_snapshot`, so information the new ledger cannot reproduce (e.g. lost rejoin history) is preserved rather than silently destroyed. A union reconciliation report lists every removed/added/changed inviter row — an "old inviter existed, new projection has no row" case is reported, not missed.
+Then start Mochi normally and migration `001` creates a clean database.
 
-Migration 4 (`archive-legacy-daily-stats`) archives the daily statistics currently present for databases that already completed the earlier ledger migration. If an older migration 3 had already replaced unreconstructable historical daily aggregates, those original values cannot be recovered without an external backup — migration 4 only archives whatever daily state remains, and it is a no-op for fresh databases.
+> **Migration freeze rule:** once Mochi is deployed with a database that must be preserved, never edit, squash, or remove an already-released migration. Need a schema change? Add the next numbered migration (`002`, `003`, …) and leave previously shipped migrations untouched.
 
 ## Slash Commands
 

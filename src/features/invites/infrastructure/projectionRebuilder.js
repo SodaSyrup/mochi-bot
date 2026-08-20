@@ -45,8 +45,8 @@ function toEpochMs(value) {
 /**
  * Run a function inside an IMMEDIATE transaction so no other writer can slip
  * between the ledger read and the projection replacement. When a transaction
- * is already active (e.g. migration 003 runs inside its own transaction) the
- * outer transaction provides the boundary and we simply execute inside it.
+ * is already active (e.g. the migration runner wraps each migration) the outer
+ * transaction provides the boundary and we simply execute inside it.
  */
 function withImmediateTransaction(db, fn) {
   if (db.inTransaction) return fn();

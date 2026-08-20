@@ -2,12 +2,12 @@
  * Single source of truth for "which guilds currently have invite-related
  * persistence state?".
  *
- * Every "rebuild all guilds" operation (migration 003, the projection rebuild
- * CLI, future maintenance tools) MUST discover guilds through this helper so
- * no operation ever maintains its own alternate definition. A guild is
- * discoverable from the durable ledger tables AND the projection tables: the
- * rebuild utility is also an integrity/repair mechanism, so a guild that only
- * exists in stale projections must still be found and cleared/rebuilt.
+ * Every "rebuild all guilds" operation (the projection rebuild CLI, future
+ * maintenance tools) MUST discover guilds through this helper so no operation
+ * ever maintains its own alternate definition. A guild is discoverable from
+ * the durable ledger tables AND the projection tables: the rebuild utility is
+ * also an integrity/repair mechanism, so a guild that only exists in stale
+ * projections must still be found and cleared/rebuilt.
  */
 
 // Tables that carry a guild-scoped invite state. The UNION de-duplicates, so a

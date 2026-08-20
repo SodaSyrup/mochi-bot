@@ -1,10 +1,10 @@
 -- ⚠️ INFORMATIONAL ONLY — NOT used to create tables at runtime.
 --
 -- The authoritative schema history is `src/database/migrations/` (versioned,
--- applied transactionally, recorded in schema_migrations). This file documents
--- the final schema reached by running the full migration path so operators and
--- tools can reference it. Fresh and existing databases both reach this exact
--- schema through migrations — never edit schema.sql expecting a live effect.
+-- applied transactionally, recorded in schema_migrations). Migration 001 is the
+-- clean baseline and creates everything below in one step. From the first real
+-- deployment onward, migrations are append-only: future schema changes come as
+-- 002, 003, … and shipped migrations are never rewritten.
 
 CREATE TABLE schema_migrations (
     version INTEGER PRIMARY KEY,
@@ -39,9 +39,9 @@ CREATE TABLE invite_members (
     invite_code TEXT,
     joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     is_fake INTEGER DEFAULT 0,
-    is_left INTEGER DEFAULT 0,
+    is_left INTEGER DEFAULT 0 CHECK (is_left IN (0, 1)),
     left_at DATETIME,
-    membership_cycle INTEGER NOT NULL DEFAULT 1,
+    membership_cycle INTEGER NOT NULL DEFAULT 1 CHECK (membership_cycle >= 1),
     attribution_type TEXT,
     PRIMARY KEY (guild_id, user_id)
 );
@@ -78,11 +78,12 @@ CREATE TABLE daily_invite_stats (
     PRIMARY KEY (guild_id, date)
 );
 
+-- Durable lifecycle ledger — the source of truth for all projections.
 CREATE TABLE invite_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
-    membership_cycle INTEGER NOT NULL,
+    membership_cycle INTEGER NOT NULL CHECK (membership_cycle >= 1),
     event_type TEXT NOT NULL CHECK (event_type IN ('JOIN', 'LEAVE')),
     attribution_type TEXT NOT NULL CHECK (attribution_type IN ('INVITE', 'VANITY', 'UNKNOWN', 'PRE_EXISTING', 'OAUTH')),
     inviter_id TEXT,
@@ -92,6 +93,7 @@ CREATE TABLE invite_events (
     UNIQUE (guild_id, user_id, membership_cycle, event_type)
 );
 
+-- Durable bonus history; inviters.bonus is a rebuildable projection of this.
 CREATE TABLE invite_bonus_adjustments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -100,37 +102,6 @@ CREATE TABLE invite_bonus_adjustments (
     reason TEXT,
     actor_user_id TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
--- Operational archive of the pre-ledger mutable inviter aggregates, captured by
--- migration 003 BEFORE projections are rebuilt from the ledger. Information the
--- new event ledger cannot reproduce (e.g. lost rejoin history) is preserved
--- here instead of being irreversibly destroyed. Not used at runtime.
-CREATE TABLE legacy_inviter_stats_snapshot (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    guild_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    regular INTEGER NOT NULL,
-    bonus INTEGER NOT NULL,
-    leaves INTEGER NOT NULL,
-    fake INTEGER NOT NULL,
-    captured_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
--- Operational archive of the pre-ledger daily statistics, captured by migration
--- 003 before the rebuild replaces daily_invite_stats. Migration 004 backfills
--- this table for databases that migrated before the archive existed — but it
--- can only archive whatever daily state remains; history an older migration 003
--- already destroyed and replaced is unrecoverable without an external backup.
--- Not used at runtime.
-CREATE TABLE legacy_daily_invite_stats_snapshot (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    guild_id TEXT NOT NULL,
-    date TEXT NOT NULL,
-    joins INTEGER NOT NULL,
-    leaves INTEGER NOT NULL,
-    fakes INTEGER NOT NULL,
-    captured_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Single definition of net invites: total = regular + bonus - leaves - fake.

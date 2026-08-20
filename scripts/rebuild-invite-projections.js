@@ -22,9 +22,9 @@ const { rebuildGuildInviteProjections } = require('../src/features/invites/infra
 const { getGuildIdsWithInviteData } = require('../src/features/invites/infrastructure/projectionGuilds');
 
 // Guild discovery for "all guilds" runs delegates to the shared helper so the
-// definition never drifts from migration 003 or future rebuild-all tools. It
-// covers durable ledger tables AND projection tables (stale projections must
-// still be discoverable so an integrity/repair run can clear them).
+// definition never drifts from future rebuild-all tools. It covers durable
+// ledger tables AND projection tables (stale projections must still be
+// discoverable so an integrity/repair run can clear them).
 
 function parseArgs(argv) {
   const args = { guilds: [], dryRun: false };

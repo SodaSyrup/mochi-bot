@@ -16,22 +16,4 @@ function isAttributionType(value) {
   return ATTRIBUTION_TYPES.includes(value);
 }
 
-/**
- * Normalize a stored inviter value into a valid attribution.
- * Legacy databases stored magic strings in inviter_id; this is the only place
- * those legacy strings may be translated.
- */
-function attributionFromLegacyInviter(inviterId) {
-  if (inviterId === AttributionType.VANITY) {
-    return { type: AttributionType.VANITY, inviterId: null, inviteCode: null };
-  }
-  if (inviterId === AttributionType.UNKNOWN || inviterId == null || inviterId === '') {
-    return { type: AttributionType.UNKNOWN, inviterId: null, inviteCode: null };
-  }
-  if (inviterId === AttributionType.PRE_EXISTING) {
-    return { type: AttributionType.PRE_EXISTING, inviterId: null, inviteCode: null };
-  }
-  return { type: AttributionType.INVITE, inviterId, inviteCode: null };
-}
-
-module.exports = { AttributionType, ATTRIBUTION_TYPES, isAttributionType, attributionFromLegacyInviter };
+module.exports = { AttributionType, ATTRIBUTION_TYPES, isAttributionType };
