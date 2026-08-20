@@ -29,7 +29,7 @@ class SafetyPage {
   }
 
   getGuildId() {
-    return window.Mochi?.currentGuildId || '999888777666555444';
+    return window.Mochi?.currentGuildId;
   }
 
   async refreshAll() {
@@ -44,9 +44,7 @@ class SafetyPage {
 
   async loadSafetySettings(guildId) {
     try {
-      const res = await fetch(`/api/guilds/${guildId}/safety`);
-      if (!res.ok) throw new Error('Failed to load safety settings');
-      const data = await res.json();
+      const data = await apiFetch(`/api/guilds/${guildId}/safety`);
       this.safetySettings = data.safety;
       this.renderSafetySettings(data.safety);
     } catch (err) {
@@ -95,19 +93,15 @@ class SafetyPage {
       const defaultMessageNotifications = parseInt(document.getElementById('setting-notifications').value, 10);
       const safetyAlertsChannelId = document.getElementById('setting-safety-channel').value || null;
 
-      const res = await fetch(`/api/guilds/${guildId}/safety/settings`, {
+      const data = await apiFetch(`/api/guilds/${guildId}/safety/settings`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           verificationLevel,
           explicitContentFilter,
           defaultMessageNotifications,
           safetyAlertsChannelId
-        })
+        }
       });
-
-      if (!res.ok) throw new Error('Failed to update server safety settings');
-      const data = await res.json();
       this.safetySettings = data.safety;
       this.renderSafetySettings(data.safety);
 
@@ -126,9 +120,7 @@ class SafetyPage {
 
   async loadChannels(guildId) {
     try {
-      const res = await fetch(`/api/guilds/${guildId}/channels`);
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await apiFetch(`/api/guilds/${guildId}/channels`);
       this.channels = data.channels || [];
       this.populateChannelSelects();
     } catch (err) {
@@ -144,24 +136,22 @@ class SafetyPage {
     if (safetyChannelSelect) {
       const currentVal = this.safetySettings?.safetyAlertsChannelId || '';
       safetyChannelSelect.innerHTML = '<option value="">No Safety Channel Selected</option>' +
-        this.channels.map(c => `<option value="${c.id}" ${c.id === currentVal ? 'selected' : ''}>#${c.name}</option>`).join('');
+        this.channels.map(c => `<option value="${escapeHtml(c.id)}" ${c.id === currentVal ? 'selected' : ''}>#${escapeHtml(c.name)}</option>`).join('');
     }
 
     if (alertChannelSelect) {
       alertChannelSelect.innerHTML = '<option value="">Select alert channel...</option>' +
-        this.channels.map(c => `<option value="${c.id}">#${c.name}</option>`).join('');
+        this.channels.map(c => `<option value="${escapeHtml(c.id)}">#${escapeHtml(c.name)}</option>`).join('');
     }
 
     if (exemptChannelSelect) {
-      exemptChannelSelect.innerHTML = this.channels.map(c => `<option value="${c.id}">#${c.name}</option>`).join('');
+      exemptChannelSelect.innerHTML = this.channels.map(c => `<option value="${escapeHtml(c.id)}">#${escapeHtml(c.name)}</option>`).join('');
     }
   }
 
   async loadRoles(guildId) {
     try {
-      const res = await fetch(`/api/guilds/${guildId}/roles`);
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await apiFetch(`/api/guilds/${guildId}/roles`);
       this.roles = data.roles || [];
       this.populateRoleSelects();
     } catch (err) {
@@ -172,16 +162,14 @@ class SafetyPage {
   populateRoleSelects() {
     const exemptRoleSelect = document.getElementById('rule-exempt-roles');
     if (exemptRoleSelect) {
-      exemptRoleSelect.innerHTML = this.roles.map(r => `<option value="${r.id}">@${r.name}</option>`).join('');
+      exemptRoleSelect.innerHTML = this.roles.map(r => `<option value="${escapeHtml(r.id)}">@${escapeHtml(r.name)}</option>`).join('');
     }
   }
 
   async loadRules(guildId) {
     const container = document.getElementById('automod-rules-container');
     try {
-      const res = await fetch(`/api/guilds/${guildId}/safety/automod`);
-      if (!res.ok) throw new Error('Failed to fetch AutoMod rules');
-      const data = await res.json();
+      const data = await apiFetch(`/api/guilds/${guildId}/safety/automod`);
       this.rules = data.rules || [];
       this.updateRuleCounts();
       this.renderRules();
@@ -301,19 +289,20 @@ class SafetyPage {
         `;
       }
 
+      const safeRuleId = escapeHtml(rule.id);
       return `
-        <div class="automod-card ${rule.enabled ? 'enabled' : 'disabled'}" id="rule-card-${rule.id}">
+        <div class="automod-card ${rule.enabled ? 'enabled' : 'disabled'}" id="rule-card-${safeRuleId}">
           <div class="automod-card-header">
             <div class="automod-title-block">
               <span class="trigger-type-badge" style="background: ${trigger.color}15; color: ${trigger.color}; border: 1px solid ${trigger.color}40;">
-                <i class="fa-solid ${trigger.icon}"></i> ${trigger.name}
+                <i class="fa-solid ${trigger.icon}"></i> ${escapeHtml(trigger.name)}
               </span>
               <h4 class="automod-rule-name">${this.escapeHtml(rule.name)}</h4>
             </div>
 
             <!-- Toggle Switch -->
             <label class="switch-toggle" title="${rule.enabled ? 'Click to disable' : 'Click to enable'}">
-              <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="safetyPage.toggleRuleState('${rule.id}', this.checked)">
+              <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="safetyPage.toggleRuleState('${safeRuleId}', this.checked)">
               <span class="slider"></span>
             </label>
           </div>
@@ -337,8 +326,8 @@ class SafetyPage {
             </div>
 
             <div class="rule-btn-actions">
-              <button class="btn-icon" title="Edit Rule" onclick="safetyPage.openEditModal('${rule.id}')"><i class="fa-solid fa-pen-to-square"></i></button>
-              <button class="btn-icon delete" title="Delete Rule from Discord" onclick="safetyPage.deleteRule('${rule.id}')"><i class="fa-solid fa-trash-can"></i></button>
+              <button class="btn-icon" title="Edit Rule" onclick="safetyPage.openEditModal('${safeRuleId}')"><i class="fa-solid fa-pen-to-square"></i></button>
+              <button class="btn-icon delete" title="Delete Rule from Discord" onclick="safetyPage.deleteRule('${safeRuleId}')"><i class="fa-solid fa-trash-can"></i></button>
             </div>
           </div>
         </div>
@@ -349,14 +338,10 @@ class SafetyPage {
   async toggleRuleState(ruleId, enabled) {
     const guildId = this.getGuildId();
     try {
-      const res = await fetch(`/api/guilds/${guildId}/safety/automod/${ruleId}`, {
+      const data = await apiFetch(`/api/guilds/${guildId}/safety/automod/${ruleId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled })
+        body: { enabled }
       });
-
-      if (!res.ok) throw new Error('Failed to toggle rule');
-      const data = await res.json();
       
       const idx = this.rules.findIndex(r => r.id === ruleId);
       if (idx !== -1) {
@@ -397,11 +382,7 @@ class SafetyPage {
 
     const guildId = this.getGuildId();
     try {
-      const res = await fetch(`/api/guilds/${guildId}/safety/automod/${ruleId}`, {
-        method: 'DELETE'
-      });
-
-      if (!res.ok) throw new Error('Failed to delete rule');
+      await apiFetch(`/api/guilds/${guildId}/safety/automod/${ruleId}`, { method: 'DELETE' });
       this.rules = this.rules.filter(r => r.id !== ruleId);
       this.updateRuleCounts();
       this.renderRules();
@@ -634,18 +615,7 @@ class SafetyPage {
       const url = isEdit ? `/api/guilds/${guildId}/safety/automod/${editId}` : `/api/guilds/${guildId}/safety/automod`;
       const method = isEdit ? 'PATCH' : 'POST';
 
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Failed to save rule on Discord');
-      }
-
-      const data = await res.json();
+      const data = await apiFetch(url, { method, body: payload });
       this.closeRuleModal();
 
       if (isEdit) {
@@ -679,10 +649,14 @@ class SafetyPage {
 
     const actionText = (data.action?.type === 3) ? 'Timed Out (Mute)' : (data.action?.type === 2 ? 'Alerted' : 'Blocked Message');
     if (window.Mochi) {
-      window.Mochi.showToast(
-        `🚨 <b>AutoMod Interception:</b> User <code>${data.user?.username || data.userId}</code> triggered <b>${data.ruleName || 'AutoMod Rule'}</b> in #${data.channelName || 'chat'}. Action: <b>${actionText}</b>`,
-        'leave'
-      );
+      const parts = [
+        { b: 'AutoMod Interception: ' },
+        { text: 'User ' },
+        { code: data.user?.username || data.userId || 'Unknown' },
+        { text: ` triggered ${data.ruleName || 'AutoMod Rule'} in #${data.channelName || 'chat'}. Action: ` },
+        { b: actionText }
+      ];
+      window.Mochi.showToast(parts, 'leave');
     }
   }
 
@@ -721,7 +695,7 @@ class SafetyPage {
       return `
         <div class="incident-item">
           <div class="incident-avatar">
-            <img src="${inc.user?.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'}" alt="Avatar">
+            <img src="${this.escapeHtml(inc.user?.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png')}" alt="Avatar">
           </div>
           <div class="incident-details">
             <div class="incident-header">
@@ -774,24 +748,23 @@ class SafetyPage {
 
     const pick = testOffenses[Math.floor(Math.random() * testOffenses.length)];
 
+    // Deterministic test violator name (simulated input only).
+    this._simViolatorCounter = (this._simViolatorCounter || 100) + 1;
+
     try {
-      const res = await fetch(`/api/guilds/${guildId}/simulate/automod`, {
+      const data = await apiFetch(`/api/guilds/${guildId}/simulate/automod`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           ruleName: pick.ruleName,
           triggerType: pick.triggerType,
-          username: 'TestViolator_' + Math.floor(Math.random() * 900 + 100),
+          username: 'TestViolator_' + this._simViolatorCounter,
           channelName: 'general-chat',
           content: pick.content,
           matchedKeyword: pick.matchedKeyword,
           actionType: pick.actionType,
           timeoutSeconds: pick.timeoutSeconds || 300
-        })
+        }
       });
-
-      if (!res.ok) throw new Error('Simulation failed');
-      const data = await res.json();
       console.log('[Safety Simulator] Triggered test incident:', data);
     } catch (err) {
       console.error('[Safety Simulator] Error:', err);

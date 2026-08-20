@@ -1,5 +1,4 @@
 const { SlashCommandBuilder } = require('discord.js');
-const inviteRepo = require('../../../database/repositories/inviteRepo');
 const embedBuilder = require('../../services/embedBuilder');
 
 module.exports = {
@@ -12,7 +11,7 @@ module.exports = {
         .setRequired(false)
     ),
 
-  async execute(interaction) {
+  async execute(interaction, client) {
     const targetUser = interaction.options.getUser('user') || interaction.user;
     const guildId = interaction.guildId;
 
@@ -20,7 +19,7 @@ module.exports = {
       return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
     }
 
-    const stats = inviteRepo.getInviter(guildId, targetUser.id);
+    const stats = client.services.invites.getInviterStats(guildId, targetUser.id);
     const embed = embedBuilder.invites(targetUser, stats, interaction.guild.name);
 
     await interaction.reply({ embeds: [embed] });

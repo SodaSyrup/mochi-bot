@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const embedBuilder = require('../../services/embedBuilder');
-const inviteRepo = require('../../../database/repositories/inviteRepo');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -18,7 +17,7 @@ module.exports = {
         .setRequired(false)
     ),
 
-  async execute(interaction) {
+  async execute(interaction, client) {
     const guild = interaction.guild;
     if (!guild) {
       return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
@@ -34,19 +33,22 @@ module.exports = {
     const label = interaction.options.getString('label');
 
     if (!label || !label.trim()) {
-      inviteRepo.deleteInviteLabel(guild.id, rawCode);
+      client.services.invites.removeInviteLabel(guild.id, rawCode);
       return interaction.reply({
         embeds: [embedBuilder.success('Label Removed', `Removed custom label from invite code \`${rawCode}\`.`)],
         ephemeral: true
       });
     }
 
-    const trimmed = label.trim();
-    inviteRepo.setInviteLabel(guild.id, rawCode, trimmed);
+    client.services.invites.setInviteLabel({
+      guildId: guild.id,
+      code: rawCode,
+      label: label.trim(),
+    });
 
     const embed = embedBuilder.success(
       '🏷️ Invite Labeled Successfully',
-      `Invite **[discord.gg/${rawCode}](https://discord.gg/${rawCode})** has been labeled as:\n**🏷️ ${trimmed}**\n\nThis label will be visible on the Mochi Web Dashboard and in invite leaderboards.`
+      `Invite **[discord.gg/${rawCode}](https://discord.gg/${rawCode})** has been labeled as:\n**🏷️ ${label.trim()}**\n\nThis label will be visible on the Mochi Web Dashboard and in invite leaderboards.`
     );
 
     return interaction.reply({ embeds: [embed], ephemeral: true });

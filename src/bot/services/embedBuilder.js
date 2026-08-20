@@ -61,13 +61,14 @@ class MochiEmbedBuilder {
   }
 
   invites(user, stats, guildName) {
-    const net = stats.regular - stats.leaves - stats.fake;
+    const net = stats.regular + stats.bonus - stats.leaves - stats.fake;
     return this.base({
       title: `📊 Invite Statistics for ${user.username}`,
       thumbnail: user.displayAvatarURL ? user.displayAvatarURL({ dynamic: true }) : null,
       description: `Server: **${guildName}**\n\nTotal Net Invites: **${net}** 🎯`,
       fields: [
         { name: '✅ Regular', value: `\`${stats.regular}\``, inline: true },
+        { name: '➕ Bonus', value: `\`${stats.bonus || 0}\``, inline: true },
         { name: '🚪 Leaves', value: `\`${stats.leaves}\``, inline: true },
         { name: '🤖 Fake / Suspicious', value: `\`${stats.fake}\``, inline: true }
       ]

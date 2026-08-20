@@ -1,5 +1,4 @@
 const { SlashCommandBuilder } = require('discord.js');
-const inviteRepo = require('../../../database/repositories/inviteRepo');
 const embedBuilder = require('../../services/embedBuilder');
 
 module.exports = {
@@ -23,7 +22,7 @@ module.exports = {
     const limit = 10;
     const offset = (page - 1) * limit;
 
-    const totalInviters = inviteRepo.getInvitersCount(guild.id);
+    const totalInviters = client.services.invites.getInvitersCount(guild.id);
     const totalPages = Math.max(1, Math.ceil(totalInviters / limit));
 
     if (page > totalPages && totalInviters > 0) {
@@ -33,7 +32,7 @@ module.exports = {
       });
     }
 
-    const rows = inviteRepo.getLeaderboard(guild.id, limit, offset);
+    const rows = client.services.invites.getLeaderboard(guild.id, { limit, offset });
 
     if (rows.length === 0) {
       return interaction.reply({
@@ -47,8 +46,7 @@ module.exports = {
     rows.forEach((row, idx) => {
       const rank = offset + idx + 1;
       const rankBadge = rank <= 3 ? medals[rank - 1] : `**#${rank}**`;
-      const net = row.total;
-      description += `${rankBadge} <@${row.user_id}> — **${net}** net \`(${row.regular} reg, ${row.leaves} leaves, ${row.fake} fake)\`\n`;
+      description += `${rankBadge} <@${row.userId}> — **${row.total}** net \`(${row.regular} reg, ${row.leaves} leaves, ${row.fake} fake)\`\n`;
     });
 
     const embed = embedBuilder.base({

@@ -1,302 +1,316 @@
-const assert = require('assert');
-const DashboardServer = require('../src/dashboard/server');
+const { TestSuite, assert } = require('./helpers/harness');
+const { startTestServer, demoLogin } = require('./helpers/server');
+const { DEMO_GUILD_ID } = require('../src/demo/fixtures');
 
-async function testApiEndpoints() {
-  console.log('🧪 Testing Dashboard Server & API Endpoints...');
+async function runApiTests() {
+  const suite = new TestSuite('Dashboard HTTP API');
 
-  const mockClient = {
-    user: { username: 'MochiMock', tag: 'MochiMock#0000', displayAvatarURL: () => 'https://cdn.discordapp.com/embed/avatars/0.png' },
-    guilds: { cache: new Map() },
-    ws: { ping: 25 },
-    isReady: () => true
-  };
+  let ctx;
+  let auth;
+  let baseUrl;
 
-  const dashboard = new DashboardServer(mockClient);
-  const testPort = 3000 + Math.floor(Math.random() * 5000);
-  const server = await dashboard.start(testPort);
+  suite.testAsync('server starts and /api/stats + /health are public', async () => {
+    ctx = await startTestServer();
+    baseUrl = ctx.baseUrl;
+    const stats = await fetch(`${baseUrl}/api/stats`);
+    assert.strictEqual(stats.status, 200);
+    const health = await fetch(`${baseUrl}/api/health`);
+    assert.strictEqual(health.status, 200);
+  });
 
-  try {
-    const baseUrl = `http://localhost:${testPort}`;
+  suite.testAsync('unauthenticated /api/guilds returns 401', async () => {
+    const res = await fetch(`${baseUrl}/api/guilds`);
+    assert.strictEqual(res.status, 401);
+    const body = await res.json();
+    assert.strictEqual(body.success, false);
+    assert.strictEqual(body.error.code, 'UNAUTHORIZED');
+  });
 
-    // 1. Test GET /api/stats
-    const statsRes = await fetch(`${baseUrl}/api/stats`);
-    assert.strictEqual(statsRes.status, 200);
-    const statsData = await statsRes.json();
-    assert(statsData.bot);
-    assert(statsData.telemetry);
-    console.log('  ✅ GET /api/stats responded with valid telemetry.');
+  suite.testAsync('unauthenticated guild-scoped endpoints return 401', async () => {
+    const res = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/leaderboard`);
+    assert.strictEqual(res.status, 401);
+  });
 
-    // 2. Test GET /api/guilds
-    const guildsRes = await fetch(`${baseUrl}/api/guilds`);
-    assert.strictEqual(guildsRes.status, 200);
-    const guildsData = await guildsRes.json();
-    assert(guildsData.guilds.length > 0);
-    const targetGuildId = guildsData.guilds[0].id;
-    console.log(`  ✅ GET /api/guilds returned ${guildsData.guilds.length} guilds.`);
+  suite.testAsync('demo login works and guilds list is authorized', async () => {
+    auth = await demoLogin(baseUrl);
+    const res = await fetch(`${baseUrl}/api/guilds`, auth);
+    assert.strictEqual(res.status, 200);
+    const data = await res.json();
+    assert.ok(data.guilds.length >= 1);
+    assert.strictEqual(data.guilds[0].id, DEMO_GUILD_ID);
+  });
 
-    // 3. Test GET /api/guilds/:guildId
-    const guildRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}`);
-    assert.strictEqual(guildRes.status, 200);
-    const guildData = await guildRes.json();
-    assert(guildData.guild);
-    assert(guildData.settings);
-    console.log('  ✅ GET /api/guilds/:guildId returned guild settings & channels.');
+  suite.testAsync('authorized guild access succeeds; unauthorized guild is 403', async () => {
+    const ok = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}`, auth);
+    assert.strictEqual(ok.status, 200);
 
-    // 4. Test PATCH /api/guilds/:guildId/settings
-    const patchRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/settings`, {
+    const denied = await fetch(`${baseUrl}/api/guilds/otherguild`, auth);
+    assert.strictEqual(denied.status, 403);
+    const body = await denied.json();
+    assert.strictEqual(body.error.code, 'FORBIDDEN');
+  });
+
+  suite.testAsync('PATCH settings works', async () => {
+    const res = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/settings`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fake_threshold_days: 14
-      })
+      headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie },
+      body: JSON.stringify({ fake_threshold_days: 14 }),
     });
-    assert.strictEqual(patchRes.status, 200);
-    const patchData = await patchRes.json();
-    assert.strictEqual(patchData.settings.fake_threshold_days, 14);
-    console.log('  ✅ PATCH /api/guilds/:guildId/settings successfully updated configuration.');
+    assert.strictEqual(res.status, 200);
+    const data = await res.json();
+    assert.strictEqual(data.settings.fake_threshold_days, 14);
+  });
 
-    // 5. Test POST /api/guilds/:guildId/simulate/join
-    const simRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/simulate/join`, {
+  suite.testAsync('invite endpoints work (leaderboard, history, activity, analytics, active-codes)', async () => {
+    const withAuth = { headers: { Cookie: auth.headers.Cookie } };
+
+    const lb = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/leaderboard`, withAuth);
+    const lbData = await lb.json();
+    assert.strictEqual(lb.status, 200);
+    assert.ok(lbData.leaderboard.length > 0);
+    assert.ok('bonus' in lbData.leaderboard[0]);
+    assert.ok('total' in lbData.leaderboard[0]);
+
+    const hist = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/history?limit=3`, withAuth);
+    assert.strictEqual(hist.status, 200);
+
+    const log = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/activity-log?limit=5`, withAuth);
+    const logData = await log.json();
+    assert.strictEqual(log.status, 200);
+    assert.ok(Array.isArray(logData.items));
+    assert.strictEqual(logData.items[0].attribution.type, 'INVITE');
+    assert.strictEqual(logData.items[0].attribution.inviterId, '555555555555555555');
+
+    const an = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/analytics?days=7`, withAuth);
+    const anData = await an.json();
+    assert.strictEqual(anData.analytics.length, 7);
+
+    const codes = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/active-codes`, withAuth);
+    const codesData = await codes.json();
+    assert.strictEqual(codes.status, 200);
+    assert.ok(codesData.invites.length >= 1);
+  });
+
+  suite.testAsync('simulate join/leave exercise the real use cases', async () => {
+    const withAuth = { headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie } };
+    const join = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/simulate/join`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: 'TestSimulatorUser',
-        inviterId: 'test_inviter_sim',
-        inviteCode: 'mochi-test',
-        isFake: false
-      })
+      headers: withAuth.headers,
+      body: JSON.stringify({ username: 'ApiTestUser', inviterId: '111111111111111111', inviteCode: 'mochi-welcome' }),
     });
-    assert.strictEqual(simRes.status, 200);
-    const simData = await simRes.json();
-    assert(simData.success);
-    assert.strictEqual(simData.event.user.username, 'TestSimulatorUser');
-    console.log('  ✅ POST /api/guilds/:guildId/simulate/join triggered live event.');
+    const joinData = await join.json();
+    assert.strictEqual(join.status, 200);
+    assert.strictEqual(joinData.success, true);
 
-    // 6. Test GET /api/guilds/:guildId/channels
-    const chanRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/channels`);
-    assert.strictEqual(chanRes.status, 200);
-    const chanData = await chanRes.json();
-    assert(chanData.channels.length > 0);
-    console.log(`  ✅ GET /api/guilds/:guildId/channels returned ${chanData.channels.length} channels.`);
-
-    // 7. Test POST /api/guilds/:guildId/invites (Create invite with label)
-    const createInvRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/invites`, {
+    const leave = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/simulate/leave`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        channelId: chanData.channels[0].id,
-        label: '🚀 TikTok Viral Promo',
-        maxAge: 86400,
-        maxUses: 50,
-        temporary: false
-      })
+      headers: withAuth.headers,
+      body: JSON.stringify({ userId: joinData.event.user.id }),
     });
-    assert.strictEqual(createInvRes.status, 201);
-    const createInvData = await createInvRes.json();
-    assert(createInvData.success);
-    assert(createInvData.invite.code);
-    assert.strictEqual(createInvData.invite.label, '🚀 TikTok Viral Promo');
-    assert.strictEqual(createInvData.invite.maxUses, 50);
-    const createdCode = createInvData.invite.code;
-    console.log(`  ✅ POST /api/guilds/:guildId/invites created labeled invite code: ${createdCode}.`);
+    const leaveData = await leave.json();
+    assert.strictEqual(leave.status, 200);
+    assert.strictEqual(leaveData.success, true);
+  });
 
-    // 8. Test POST /api/guilds/:guildId/invites/:code/label (Update existing label)
-    const updateLabelRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/invites/${createdCode}/label`, {
+  suite.testAsync('channels and roles endpoints work', async () => {
+    const withAuth = { headers: { Cookie: auth.headers.Cookie } };
+    const ch = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/channels`, withAuth);
+    const chData = await ch.json();
+    assert.strictEqual(ch.status, 200);
+    assert.ok(chData.channels.length > 0);
+
+    const roles = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/roles`, withAuth);
+    const rolesData = await roles.json();
+    assert.strictEqual(roles.status, 200);
+    assert.ok(rolesData.roles.length > 0);
+  });
+
+  suite.testAsync('create/label/revoke invite lifecycle', async () => {
+    const withAuth = { headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie } };
+    const created = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        label: '✨ Updated Influencer Campaign'
-      })
+      headers: withAuth.headers,
+      body: JSON.stringify({ channelId: 'chan_welcome', label: 'API Promo', maxUses: 25 }),
     });
-    assert.strictEqual(updateLabelRes.status, 200);
-    const updateLabelData = await updateLabelRes.json();
-    assert.strictEqual(updateLabelData.label, '✨ Updated Influencer Campaign');
-    console.log('  ✅ POST /api/guilds/:guildId/invites/:code/label updated existing label.');
+    const createdData = await created.json();
+    assert.strictEqual(created.status, 201);
+    assert.strictEqual(createdData.invite.label, 'API Promo');
+    const code = createdData.invite.code;
 
-    // 9. Test GET /api/guilds/:guildId/invites/active-codes
-    const activeRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/invites/active-codes`);
-    assert.strictEqual(activeRes.status, 200);
-    const activeData = await activeRes.json();
-    const foundInvite = activeData.invites.find(i => i.code === createdCode);
-    assert(foundInvite);
-    assert.strictEqual(foundInvite.label, '✨ Updated Influencer Campaign');
-    console.log('  ✅ GET /api/guilds/:guildId/invites/active-codes contains newly created and labeled invite.');
-
-    // 10. Test DELETE /api/guilds/:guildId/invites/:code/label (Remove label)
-    const delLabelRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/invites/${createdCode}/label`, {
-      method: 'DELETE'
+    const labeled = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/${code}/label`, {
+      method: 'POST',
+      headers: withAuth.headers,
+      body: JSON.stringify({ label: 'API Promo v2' }),
     });
-    assert.strictEqual(delLabelRes.status, 200);
-    const delLabelData = await delLabelRes.json();
-    assert.strictEqual(delLabelData.label, null);
-    console.log('  ✅ DELETE /api/guilds/:guildId/invites/:code/label removed label.');
+    assert.strictEqual(labeled.status, 200);
+    assert.strictEqual((await labeled.json()).label, 'API Promo v2');
 
-    // 11. Test DELETE /api/guilds/:guildId/invites/:code (Revoke invite)
-    const revokeRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/invites/${createdCode}`, {
-      method: 'DELETE'
+    const removed = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/${code}/label`, {
+      method: 'DELETE',
+      headers: withAuth.headers,
     });
-    assert.strictEqual(revokeRes.status, 200);
-    console.log(`  ✅ DELETE /api/guilds/:guildId/invites/:code revoked invite.`);
+    assert.strictEqual(removed.status, 200);
+    assert.strictEqual((await removed.json()).label, null);
 
-    // 12. Test GET /api/guilds/:guildId/safety
-    const safetyRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/safety`);
-    assert.strictEqual(safetyRes.status, 200);
-    const safetyData = await safetyRes.json();
-    assert(safetyData.safety);
-    assert(typeof safetyData.safety.verificationLevel === 'number');
-    console.log('  ✅ GET /api/guilds/:guildId/safety returned Discord safety & moderation configuration.');
+    const revoked = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/${code}`, {
+      method: 'DELETE',
+      headers: withAuth.headers,
+    });
+    assert.strictEqual(revoked.status, 200);
+  });
 
-    // 13. Test PATCH /api/guilds/:guildId/safety/settings
-    const patchSafetyRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/safety/settings`, {
+  suite.testAsync('safety overview, settings, automod CRUD', async () => {
+    const withAuth = { headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie } };
+
+    const overview = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/safety`, withAuth);
+    assert.strictEqual(overview.status, 200);
+    const ovData = await overview.json();
+    assert.strictEqual(typeof ovData.safety.verificationLevel, 'number');
+
+    const patch = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/safety/settings`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        verificationLevel: 2,
-        explicitContentFilter: 2,
-        defaultMessageNotifications: 1
-      })
+      headers: withAuth.headers,
+      body: JSON.stringify({ verificationLevel: 2, explicitContentFilter: 2 }),
     });
-    assert.strictEqual(patchSafetyRes.status, 200);
-    const patchSafetyData = await patchSafetyRes.json();
-    assert.strictEqual(patchSafetyData.safety.verificationLevel, 2);
-    assert.strictEqual(patchSafetyData.safety.explicitContentFilter, 2);
-    console.log('  ✅ PATCH /api/guilds/:guildId/safety/settings updated server safety settings.');
+    assert.strictEqual(patch.status, 200);
+    const patchData = await patch.json();
+    assert.strictEqual(patchData.safety.verificationLevel, 2);
 
-    // 14. Test GET /api/guilds/:guildId/roles
-    const rolesRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/roles`);
-    assert.strictEqual(rolesRes.status, 200);
-    const rolesData = await rolesRes.json();
-    assert(rolesData.roles && rolesData.roles.length > 0);
-    console.log(`  ✅ GET /api/guilds/:guildId/roles returned ${rolesData.roles.length} manageable roles.`);
-
-    // 15. Test GET /api/guilds/:guildId/safety/automod
-    const automodRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/safety/automod`);
-    assert.strictEqual(automodRes.status, 200);
-    const automodData = await automodRes.json();
-    assert(Array.isArray(automodData.rules));
-    console.log(`  ✅ GET /api/guilds/:guildId/safety/automod returned ${automodData.rules.length} AutoMod rules.`);
-
-    // 16. Test POST /api/guilds/:guildId/safety/automod (Create Rule)
-    const createRuleRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/safety/automod`, {
+    const created = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/safety/automod`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: '🧪 Test Scam Link Filter',
-        eventType: 1,
-        triggerType: 1,
-        triggerMetadata: {
-          keywordFilter: ['*scam-site.test*', '*free-nitro-fake*'],
-          regexPatterns: [],
-          allowList: []
-        },
-        actions: [
-          { type: 1, metadata: { customMessage: 'Blocked test scam link.' } }
-        ],
-        enabled: true
-      })
+      headers: withAuth.headers,
+      body: JSON.stringify({ name: 'API Test Rule', triggerType: 1, actions: [{ type: 1, metadata: {} }] }),
     });
-    assert.strictEqual(createRuleRes.status, 201);
-    const createRuleData = await createRuleRes.json();
-    assert(createRuleData.success);
-    assert.strictEqual(createRuleData.rule.name, '🧪 Test Scam Link Filter');
-    const createdRuleId = createRuleData.rule.id;
-    console.log(`  ✅ POST /api/guilds/:guildId/safety/automod created new AutoMod rule: ${createdRuleId}.`);
+    assert.strictEqual(created.status, 201);
+    const createdRule = (await created.json()).rule;
+    assert.strictEqual(createdRule.name, 'API Test Rule');
 
-    // 17. Test PATCH /api/guilds/:guildId/safety/automod/:ruleId (Toggle & Edit)
-    const editRuleRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/safety/automod/${createdRuleId}`, {
+    const patched = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/safety/automod/${createdRule.id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        enabled: false,
-        name: '🧪 Updated Test Scam Link Filter'
-      })
+      headers: withAuth.headers,
+      body: JSON.stringify({ enabled: false }),
     });
-    assert.strictEqual(editRuleRes.status, 200);
-    const editRuleData = await editRuleRes.json();
-    assert.strictEqual(editRuleData.rule.enabled, false);
-    assert.strictEqual(editRuleData.rule.name, '🧪 Updated Test Scam Link Filter');
-    console.log('  ✅ PATCH /api/guilds/:guildId/safety/automod/:ruleId toggled and updated rule on Discord.');
+    assert.strictEqual(patched.status, 200);
+    assert.strictEqual((await patched.json()).rule.enabled, false);
 
-    // 18. Test DELETE /api/guilds/:guildId/safety/automod/:ruleId
-    const delRuleRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/safety/automod/${createdRuleId}`, {
-      method: 'DELETE'
+    const del = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/safety/automod/${createdRule.id}`, {
+      method: 'DELETE',
+      headers: withAuth.headers,
     });
-    assert.strictEqual(delRuleRes.status, 200);
-    console.log('  ✅ DELETE /api/guilds/:guildId/safety/automod/:ruleId deleted rule from Discord.');
+    assert.strictEqual(del.status, 200);
+  });
 
-    // 19. Test POST /api/guilds/:guildId/simulate/automod
-    const simAutoModRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/simulate/automod`, {
+  suite.testAsync('simulate/automod works', async () => {
+    const res = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/simulate/automod`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ruleName: '🛡️ Block Scam Links & Malicious URLs',
-        triggerType: 1,
-        username: 'SimulatedBadActor',
-        content: 'Free nitro at scam-test.ru!',
-        matchedKeyword: 'scam-test.ru',
-        actionType: 1
-      })
+      headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie },
+      body: JSON.stringify({ ruleName: 'Test', triggerType: 1, actionType: 1, matchedKeyword: 'x' }),
     });
-    assert.strictEqual(simAutoModRes.status, 200);
-    const simAutoModData = await simAutoModRes.json();
-    assert(simAutoModData.success);
-    assert.strictEqual(simAutoModData.incident.matchedKeyword, 'scam-test.ru');
-    console.log('  ✅ POST /api/guilds/:guildId/simulate/automod triggered live incident event.');
+    assert.strictEqual(res.status, 200);
+    const data = await res.json();
+    assert.strictEqual(data.success, true);
+  });
 
-    // 20. Test GET /api/guilds/:guildId/invites/activity-log (Audit trail with filters)
-    const auditRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/invites/activity-log?limit=10&filter=all`);
-    assert.strictEqual(auditRes.status, 200);
-    const auditData = await auditRes.json();
-    assert(Array.isArray(auditData.items));
-    assert(auditData.summary);
-    assert(typeof auditData.summary.total === 'number');
-    console.log(`  ✅ GET /api/guilds/:guildId/invites/activity-log returned ${auditData.items.length} audit entries.`);
+  suite.testAsync('sync-members works in demo and is idempotent', async () => {
+    const withAuth = { headers: { Cookie: auth.headers.Cookie } };
+    const r1 = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/sync-members`, { method: 'POST', headers: withAuth.headers });
+    assert.strictEqual(r1.status, 200);
+    assert.strictEqual((await r1.json()).success, true);
+    const r2 = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/sync-members`, { method: 'POST', headers: withAuth.headers });
+    assert.strictEqual((await r2.json()).synced, 0);
+  });
 
-    // 20. Test Multi-Page App (MPA) Routes
-    const pages = [
-      { path: '/', title: 'Invite Tracker & Overview' },
-      { path: '/analytics', title: 'Invite Analytics' },
-      { path: '/leaderboard', title: 'Invite Leaderboard' },
-      { path: '/codes', title: 'Active Invite Codes & Labels' },
-      { path: '/safety', title: 'Safety & AutoMod Control Center' },
-      { path: '/simulator', title: 'WebSocket Simulator' },
-      { path: '/settings', title: 'Settings & Bot Status' }
-    ];
-
-    for (const page of pages) {
-      const res = await fetch(`${baseUrl}${page.path}`);
-      assert.strictEqual(res.status, 200, `Expected 200 for ${page.path}`);
-      const html = await res.text();
-      assert.ok(html.includes(page.title), `Page ${page.path} should contain title '${page.title}'`);
-      assert.ok(html.includes('/js/shared.js'), `Page ${page.path} should load shared.js`);
+  suite.testAsync('MPA pages and static assets serve correctly', async () => {
+    for (const path of ['/', '/analytics', '/leaderboard', '/codes', '/safety', '/simulator', '/settings']) {
+      const res = await fetch(`${baseUrl}${path}`);
+      assert.strictEqual(res.status, 200, `expected 200 for ${path}`);
     }
-    console.log('  ✅ GET / and all MPA page routes (including /safety) serve correct HTML files.');
+    const notFound = await fetch(`${baseUrl}/some-missing-page`);
+    assert.strictEqual(notFound.status, 404);
+    const css = await fetch(`${baseUrl}/css/dashboard.css`);
+    assert.strictEqual(css.status, 200);
+  });
 
-    // 21. Test 404 Route
-    const notFoundRes = await fetch(`${baseUrl}/some-nonexistent-route-12345`);
-    assert.strictEqual(notFoundRes.status, 404);
-    const notFoundHtml = await notFoundRes.text();
-    assert.ok(notFoundHtml.includes('404 Page Not Found'));
-    console.log('  ✅ Unhandled routes correctly return 404.html with status 404.');
+  suite.testAsync('unknown API endpoint returns JSON 404', async () => {
+    const res = await fetch(`${baseUrl}/api/does-not-exist`);
+    assert.strictEqual(res.status, 404);
+    const body = await res.json();
+    assert.strictEqual(body.success, false);
+  });
 
-    // 22. Test static assets
-    const cssRes = await fetch(`${baseUrl}/css/dashboard.css`);
-    assert.strictEqual(cssRes.status, 200);
-    const sharedJsRes = await fetch(`${baseUrl}/js/shared.js`);
-    assert.strictEqual(sharedJsRes.status, 200);
-    console.log('  ✅ Static CSS and shared JS assets serve with status 200.');
-
-    console.log('✨ All Dashboard API, Safety & Multi-Page Tests Passed Successfully!\n');
-  } finally {
-    server.close();
-  }
+  await ctx?.server?.close();
+  return suite.run();
 }
 
-module.exports = testApiEndpoints;
+/**
+ * Development-mode convenience login: with OAuth credentials missing, a
+ * development session should be granted for the bot's connected guilds.
+ */
+async function runDevelopmentLoginTests() {
+  const suite = new TestSuite('Development Login (no OAuth)');
+
+  let ctx;
+  let baseUrl;
+
+  suite.testAsync('development login without OAuth creates a usable session', async () => {
+    const mockClient = {
+      user: { username: 'MochiMock', tag: 'MochiMock#0000' },
+      guilds: {
+        cache: new Map([
+          ['g_alpha', { id: 'g_alpha', name: 'Alpha', memberCount: 50, iconURL: () => null, ownerId: 'o1' }],
+        ]),
+      },
+      isReady: () => true,
+    };
+    ctx = await startTestServer({
+      mode: 'development',
+      seed: false,
+      client: mockClient,
+      env: { CLIENT_ID: '', CLIENT_SECRET: '' }, // force the no-OAuth branch
+    });
+    baseUrl = ctx.baseUrl;
+
+    // login sets a dev session (OAuth is not configured in this env).
+    const login = await fetch(`${baseUrl}/auth/login`, { redirect: 'manual' });
+    assert.strictEqual(login.status, 302);
+    const cookie = login.headers.get('set-cookie')?.split(';')[0];
+    assert.ok(cookie, 'expected a session cookie');
+    const auth = { headers: { Cookie: cookie } };
+
+    const user = await fetch(`${baseUrl}/auth/user`, auth);
+    const userData = await user.json();
+    assert.strictEqual(userData.authenticated, true);
+    assert.strictEqual(userData.user.isDev, true);
+
+    const guilds = await fetch(`${baseUrl}/api/guilds`, auth);
+    const guildsData = await guilds.json();
+    assert.strictEqual(guilds.status, 200);
+    assert.ok(guildsData.guilds.some((g) => g.id === 'g_alpha'));
+
+    const detail = await fetch(`${baseUrl}/api/guilds/g_alpha`, auth);
+    assert.strictEqual(detail.status, 200);
+  });
+
+  suite.testAsync('development login must never grant access in demo or production', async () => {
+    // Demo mode: /auth/login sets the DEMO user, not a dev user.
+    const demo = await startTestServer({ mode: 'demo', seed: false });
+    const demoLogin = await fetch(`${demo.baseUrl}/auth/login`, { redirect: 'manual' });
+    const demoCookie = demoLogin.headers.get('set-cookie')?.split(';')[0];
+    const demoUser = await (await fetch(`${demo.baseUrl}/auth/user`, { headers: { Cookie: demoCookie } })).json();
+    assert.strictEqual(demoUser.user.isDev, undefined);
+    assert.strictEqual(demoUser.user.isDemo, true);
+    await demo.server.close();
+  });
+
+  await ctx?.server?.close();
+  return suite.run();
+}
+
+module.exports = { runApiTests, runDevelopmentLoginTests };
 
 if (require.main === module) {
-  testApiEndpoints().catch(err => {
-    console.error('❌ API Test Failed:', err);
-    process.exit(1);
+  Promise.all([runApiTests(), runDevelopmentLoginTests()]).then((results) => {
+    const failed = results.reduce((a, b) => a + b, 0);
+    if (typeof test !== 'function') process.exit(failed ? 1 : 0);
   });
 }

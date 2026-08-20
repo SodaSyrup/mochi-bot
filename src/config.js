@@ -1,26 +1,116 @@
 require('dotenv').config();
 const path = require('path');
+const crypto = require('crypto');
 
-module.exports = {
-  bot: {
-    token: process.env.DISCORD_TOKEN || '',
-    clientId: process.env.CLIENT_ID || '',
-    clientSecret: process.env.CLIENT_SECRET || '',
-    ownerId: process.env.OWNER_ID || '',
-    defaultPrefix: process.env.DEFAULT_PREFIX || '!',
-    embedColor: process.env.EMBED_COLOR || '#7c3aed',
-  },
-  dashboard: {
-    port: parseInt(process.env.PORT || '3000', 10),
-    sessionSecret: process.env.SESSION_SECRET || 'mochi_default_secret_please_change_in_production',
-    url: process.env.DASHBOARD_URL || 'http://localhost:3000',
-    redirectUri: process.env.REDIRECT_URI || 'http://localhost:3000/auth/callback',
-    demoMode: process.env.DEMO_MODE === 'true' || !process.env.DISCORD_TOKEN,
-  },
-  database: {
-    path: process.env.DATABASE_PATH || path.join(__dirname, '../data/mochi.sqlite'),
-  },
-  inviteTracker: {
-    fakeAccountThresholdDays: 7, // Accounts < 7 days old flagged as fake
+const APP_MODES = Object.freeze(['development', 'demo', 'production']);
+const DEFAULT_SECRET = 'mochi_default_secret_please_change_in_production';
+const DEFAULT_FAKE_THRESHOLD_DAYS = 7;
+
+function resolveAppMode(env = process.env) {
+  const explicit = (env.APP_MODE || '').trim().toLowerCase();
+
+  // Legacy compatibility: DEMO_MODE=true historically enabled the sandbox.
+  // Normalize it into APP_MODE=demo here so a single concept drives the app.
+  if (env.DEMO_MODE === 'true') {
+    if (explicit && explicit !== 'demo') {
+      console.warn(`[Config] DEMO_MODE=true conflicts with APP_MODE=${explicit}; APP_MODE wins.`);
+    } else {
+      return 'demo';
+    }
   }
-};
+
+  return explicit || 'development';
+}
+
+function buildConfig(env = process.env) {
+  const mode = resolveAppMode(env);
+  if (!APP_MODES.includes(mode)) {
+    throw new Error(
+      `Invalid APP_MODE "${mode}". Allowed values: ${APP_MODES.join(', ')}. ` +
+      'Set APP_MODE=development|demo|production in .env.'
+    );
+  }
+
+  const isProduction = mode === 'production';
+  const isDemo = mode === 'demo';
+  const isDevelopment = mode === 'development';
+
+  const token = env.DISCORD_TOKEN || '';
+  const clientId = env.CLIENT_ID || '';
+  const clientSecret = env.CLIENT_SECRET || '';
+  const dashboardUrl = env.DASHBOARD_URL || 'http://localhost:3000';
+  const redirectUri = env.REDIRECT_URI || `${dashboardUrl}/auth/callback`;
+
+  if (isProduction) {
+    const missing = [];
+    if (!token) missing.push('DISCORD_TOKEN');
+    if (!clientId) missing.push('CLIENT_ID');
+    if (!clientSecret) missing.push('CLIENT_SECRET');
+    if (!env.SESSION_SECRET || env.SESSION_SECRET === DEFAULT_SECRET) {
+      missing.push('SESSION_SECRET (must be a unique random value, not the default)');
+    }
+    let redirectValid = false;
+    try {
+      new URL(redirectUri);
+      new URL(dashboardUrl);
+      redirectValid = true;
+    } catch {
+      redirectValid = false;
+    }
+    if (!redirectValid) missing.push('DASHBOARD_URL / REDIRECT_URI (must be valid absolute URLs)');
+
+    if (missing.length > 0) {
+      throw new Error(
+        `[Config] APP_MODE=production is missing required configuration: ${missing.join(', ')}. ` +
+        'Fix these in your environment or .env before starting.'
+      );
+    }
+  }
+
+  // In production the secret is required. In development/demo we fall back to an
+  // ephemeral random secret so cookies still work without shipping a default.
+  const sessionSecret = isProduction
+    ? env.SESSION_SECRET
+    : env.SESSION_SECRET && env.SESSION_SECRET !== DEFAULT_SECRET
+      ? env.SESSION_SECRET
+      : crypto.randomBytes(32).toString('hex');
+
+  const databasePath = env.DATABASE_PATH || path.join(__dirname, '../data/mochi.sqlite');
+  const demoSqlitePath = env.DEMO_DATABASE_PATH || path.join(__dirname, '../data/mochi-demo.sqlite');
+
+  return {
+    app: {
+      mode,
+      isProduction,
+      isDemo,
+      isDevelopment,
+    },
+    bot: {
+      token,
+      clientId,
+      clientSecret,
+      ownerId: env.OWNER_ID || '',
+      defaultPrefix: env.DEFAULT_PREFIX || '!',
+      embedColor: env.EMBED_COLOR || '#7c3aed',
+    },
+    dashboard: {
+      port: parseInt(env.PORT || '3000', 10),
+      sessionSecret,
+      url: dashboardUrl,
+      redirectUri,
+    },
+    database: {
+      path: databasePath,
+      demoPath: demoSqlitePath,
+    },
+    inviteTracker: {
+      fakeAccountThresholdDays: parseInt(
+        env.FAKE_ACCOUNT_THRESHOLD_DAYS || String(DEFAULT_FAKE_THRESHOLD_DAYS),
+        10
+      ),
+    },
+  };
+}
+
+module.exports = buildConfig();
+module.exports.buildConfig = buildConfig;

@@ -29,12 +29,11 @@ class SimulatorPage {
       if (type === 'join') {
         const randomNames = ['Sakura_Fox', 'KuroNeko', 'MatchaLatte', 'AstroCoder', 'LunaStar', 'MochiFan99'];
         const name = randomNames[Math.floor(Math.random() * randomNames.length)];
-        
+
         // Fetch active codes to use a real code if available
         let activeCode = 'mochi-welcome';
         try {
-          const codesRes = await fetch(`/api/guilds/${this.currentGuildId}/invites/active-codes`);
-          const codesData = await codesRes.json();
+          const codesData = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/active-codes`);
           if (codesData.invites && codesData.invites.length > 0) {
             activeCode = codesData.invites[Math.floor(Math.random() * codesData.invites.length)].code;
           }
@@ -42,57 +41,56 @@ class SimulatorPage {
           // fallback to default
         }
 
-        const res = await fetch(`/api/guilds/${this.currentGuildId}/simulate/join`, {
+        const data = await apiFetch(`/api/guilds/${this.currentGuildId}/simulate/join`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: {
             username: name,
             inviterId: '111111111111111111',
             inviteCode: activeCode,
             isFake
-          })
+          }
         });
 
-        const data = await res.json();
         if (data.success) {
-          window.Mochi.showToast(`⚡ Dispatched simulated ${isFake ? 'fake join' : 'join'} event for <b>${name}</b>`, 'success');
+          window.Mochi.showToast([{ text: `Dispatched simulated ${isFake ? 'fake join' : 'join'} event for ` }, { b: name }], 'success');
+        } else {
+          window.Mochi.showToast('Simulated join was a duplicate/no-op.', 'leave');
         }
       } else if (type === 'leave') {
-        const res = await fetch(`/api/guilds/${this.currentGuildId}/simulate/leave`, {
+        const data = await apiFetch(`/api/guilds/${this.currentGuildId}/simulate/leave`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: 'mem_111111111111111111_0' })
+          body: { userId: 'mem_111111111111111111_0' }
         });
 
-        const data = await res.json();
         if (data.success) {
-          window.Mochi.showToast(`⚡ Dispatched simulated departure event`, 'leave');
+          window.Mochi.showToast('Dispatched simulated departure event', 'leave');
+        } else {
+          window.Mochi.showToast('Simulated leave was a duplicate/no-op.', 'leave');
         }
       }
     } catch (err) {
       console.error('Error simulating event:', err);
-      window.Mochi.showToast('Failed to trigger simulation event', 'leave');
+      window.Mochi.showToast(err.status === 403 ? 'You do not have permission to simulate events.' : 'Failed to trigger simulation event', 'leave');
     }
   }
 
   async simulateAutoMod() {
-    const guildId = this.currentGuildId || window.Mochi?.currentGuildId || '999888777666555444';
+    const guildId = this.currentGuildId || window.Mochi?.currentGuildId;
+    if (!guildId) return;
     try {
-      const res = await fetch(`/api/guilds/${guildId}/simulate/automod`, {
+      const data = await apiFetch(`/api/guilds/${guildId}/simulate/automod`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           ruleName: '🛡️ Block Scam Links & Malicious URLs',
           triggerType: 1,
-          username: 'PhishingBot_' + Math.floor(Math.random() * 900 + 100),
+          username: 'PhishingBot',
           channelName: 'general-chat',
           content: 'Free Discord Nitro 1 Year! Visit https://discord-nitro-claim.gift now!!',
           matchedKeyword: 'discord-nitro-claim.gift',
           actionType: 1
-        })
+        }
       });
 
-      const data = await res.json();
       if (data.success) {
         window.Mochi.showToast('🚨 Dispatched simulated AutoMod interception event!', 'leave');
       }

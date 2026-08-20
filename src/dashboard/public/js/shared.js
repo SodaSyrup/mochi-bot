@@ -2,6 +2,45 @@
  * 🍡 Mochi Multi-Page Dashboard - Shared Client Library
  */
 
+/**
+ * Centralized API client. JSON serialization, 401 -> redirect to login,
+ * 403 -> authorization error, consistent error extraction. No business rules.
+ */
+async function apiFetch(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(options.body);
+  }
+
+  const res = await fetch(url, { ...options, headers });
+
+  let data = null;
+  try { data = await res.json(); } catch { /* non-JSON body */ }
+
+  if (res.status === 401) {
+    // Redirect to login only if we are not already on the login flow, to
+    // avoid a reload storm when login is temporarily unavailable.
+    if (!window.location.pathname.startsWith('/auth/') && !window.location.search.includes('error=')) {
+      window.location.href = '/auth/login';
+    }
+    const err = new Error('UNAUTHORIZED');
+    err.status = 401;
+    throw err;
+  }
+  if (res.status === 403) {
+    const err = new Error(data?.error?.message || 'You do not have permission to access this resource.');
+    err.status = 403;
+    throw err;
+  }
+  if (!res.ok) {
+    const err = new Error(data?.error?.message || `Request failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
 class MochiSharedCore {
   constructor() {
     this.currentGuildId = null;
@@ -83,34 +122,43 @@ class MochiSharedCore {
     this.socket.on('connect', () => {
       console.log('[WebSocket] Connected to Mochi Gateway');
       if (this.currentGuildId) {
-        this.socket.emit('joinGuild', this.currentGuildId);
+        this.socket.emit('joinGuild', this.currentGuildId, (response) => {
+          if (response && !response.success) {
+            console.warn('[WebSocket] Guild room join denied:', response.error);
+          }
+        });
       }
     });
 
     this.socket.on('memberJoin', (data) => {
       console.log('[WebSocket] Live Member Join:', data);
-      const labelText = data.label ? ` <span class="badge-label" style="font-size: 11px;">🏷️ ${data.label}</span>` : '';
-      this.showToast(
-        `🎉 <b>${data.user.username}</b> joined using <code>${data.code}</code>!${labelText} (${data.isFake ? '⚠️ Suspicious' : 'Invited by ' + (data.inviter?.username || 'Vanity/Unknown')})`,
-        data.isFake ? 'leave' : 'join'
-      );
+      const inviterText = data.isFake
+        ? { text: ' (Suspicious)' }
+        : { text: ` (Invited by ${data.inviter?.username || 'Vanity/Unknown'})` };
+      const parts = [
+        { b: data.user?.username || 'Unknown' },
+        { text: ' joined using ' },
+        { code: data.attribution?.inviteCode || data.code || 'N/A' },
+        data.label ? { text: ' 🏷️ ' + data.label } : null,
+        inviterText
+      ].filter(Boolean);
+      this.showToast(parts, data.isFake ? 'leave' : 'join');
       this.fetchStats();
       this.triggerRealtime('memberJoin', data);
     });
 
     this.socket.on('memberLeave', (data) => {
       console.log('[WebSocket] Live Member Leave:', data);
-      this.showToast(
-        `🚪 <b>${data.user.username}</b> left the server.`,
-        'leave'
-      );
+      this.showToast([{ b: data.user?.username || 'Unknown' }, { text: ' left the server.' }], 'leave');
       this.fetchStats();
       this.triggerRealtime('memberLeave', data);
     });
 
     this.socket.on('inviteCreated', (invite) => {
       console.log('[WebSocket] New Invite Created:', invite);
-      this.showToast(`✨ New invite created: <code>${invite.code}</code>${invite.label ? ` (🏷️ ${invite.label})` : ''}`, 'success');
+      const parts = [{ text: 'New invite created: ' }, { code: invite.code || '' }];
+      if (invite.label) parts.push({ text: ' (🏷️ ' + invite.label + ')' });
+      this.showToast(parts, 'success');
       this.triggerRealtime('inviteCreated', invite);
     });
 
@@ -164,7 +212,11 @@ class MochiSharedCore {
     localStorage.setItem('mochi_selected_guild', guildId);
 
     if (this.socket) {
-      this.socket.emit('joinGuild', guildId);
+      this.socket.emit('joinGuild', guildId, (response) => {
+        if (response && !response.success) {
+          console.warn('[WebSocket] Guild room join denied:', response.error);
+        }
+      });
     }
 
     const select = document.getElementById('guild-select');
@@ -224,15 +276,18 @@ class MochiSharedCore {
    */
   async fetchUser() {
     try {
-      const res = await fetch('/auth/user');
-      const data = await res.json();
+      const data = await apiFetch('/auth/user');
       if (data.authenticated && data.user) {
         const nameEl = document.getElementById('user-name');
         const avatarEl = document.getElementById('user-avatar');
         const roleEl = document.getElementById('user-role');
         if (nameEl) nameEl.textContent = data.user.username;
         if (avatarEl) avatarEl.src = data.user.avatar;
-        if (roleEl) roleEl.textContent = data.user.isDemo ? 'Admin (Demo Sandbox)' : 'Discord Authenticated';
+        if (roleEl) {
+          roleEl.textContent = data.user.isDemo
+            ? 'Admin (Demo Sandbox)'
+            : (data.user.isDev ? 'Development Admin' : 'Discord Authenticated');
+        }
       }
     } catch (e) {
       console.error('Error fetching user:', e);
@@ -244,8 +299,7 @@ class MochiSharedCore {
    */
   async fetchStats() {
     try {
-      const res = await fetch('/api/stats');
-      const data = await res.json();
+      const data = await apiFetch('/api/stats');
 
       const pingEl = document.getElementById('stat-bot-ping');
       const ramEl = document.getElementById('stat-ram-usage');
@@ -273,9 +327,20 @@ class MochiSharedCore {
 
       const statusBox = document.getElementById('bot-connect-status-box');
       if (statusBox) {
-        statusBox.innerHTML = data.bot.connected
-          ? `🟢 <b>Connected to Discord</b> as <code>${data.bot.tag}</code>. Bot is actively listening to gateway events.`
-          : `🟡 <b>Running in Sandbox Demo Mode</b>. Bot is operational locally with SQLite persistence & real-time WebSocket simulator. Enter your <code>DISCORD_TOKEN</code> in <code>.env</code> to connect live.`;
+        statusBox.textContent = '';
+        const inner = document.createElement('div');
+        if (data.bot.connected) {
+          inner.appendChild(document.createElement('b')).textContent = 'Connected to Discord';
+          inner.appendChild(document.createTextNode(' as '));
+          const code = document.createElement('code');
+          code.textContent = data.bot.tag;
+          inner.appendChild(code);
+          inner.appendChild(document.createTextNode('. Bot is actively listening to gateway events.'));
+        } else {
+          inner.appendChild(document.createElement('b')).textContent = 'Running in Sandbox Demo Mode';
+          inner.appendChild(document.createTextNode('. Bot is operational locally with SQLite persistence & real-time WebSocket simulator.'));
+        }
+        statusBox.appendChild(inner);
       }
     } catch (e) {
       console.error('Error fetching stats:', e);
@@ -287,8 +352,7 @@ class MochiSharedCore {
    */
   async fetchGuilds() {
     try {
-      const res = await fetch('/api/guilds');
-      const data = await res.json();
+      const data = await apiFetch('/api/guilds');
       this.guilds = data.guilds || [];
 
       const select = document.getElementById('guild-select');
@@ -315,13 +379,18 @@ class MochiSharedCore {
       }
     } catch (e) {
       console.error('Error fetching guilds:', e);
+      if (e.status === 403) {
+        this.showToast('You do not have permission to view any guilds.', 'leave');
+      }
     }
   }
 
   /**
-   * Floating Toast Notifications
+   * Floating Toast Notifications. Content is a string (plain text) or an array
+   * of segments: { text } | { b } (bold) | { code }. Text is always rendered
+   * via textContent — external data can never inject HTML.
    */
-  showToast(message, type = 'success') {
+  showToast(content, type = 'success') {
     let container = document.getElementById('toast-container');
     if (!container) {
       container = document.createElement('div');
@@ -331,7 +400,25 @@ class MochiSharedCore {
 
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.innerHTML = `<div>${message}</div>`;
+    const inner = document.createElement('div');
+
+    const segments = Array.isArray(content) ? content : [{ text: content }];
+    for (const seg of segments) {
+      if (!seg) continue;
+      if (seg.b) {
+        const el = document.createElement('b');
+        el.textContent = seg.b;
+        inner.appendChild(el);
+      } else if (seg.code) {
+        const el = document.createElement('code');
+        el.textContent = seg.code;
+        inner.appendChild(el);
+      } else {
+        inner.appendChild(document.createTextNode(seg.text || ''));
+      }
+    }
+
+    toast.appendChild(inner);
     container.appendChild(toast);
 
     setTimeout(() => {
@@ -345,3 +432,5 @@ class MochiSharedCore {
 
 const Mochi = new MochiSharedCore();
 window.Mochi = Mochi;
+window.apiFetch = apiFetch;
+window.escapeHtml = escapeHtml;

@@ -1,6 +1,18 @@
--- Mochi Discord Bot Database Schema (SQLite)
+-- ⚠️ INFORMATIONAL ONLY — NOT used to create tables at runtime.
+--
+-- The authoritative schema history is `src/database/migrations/` (versioned,
+-- applied transactionally, recorded in schema_migrations). This file documents
+-- the final schema reached by running the full migration path so operators and
+-- tools can reference it. Fresh and existing databases both reach this exact
+-- schema through migrations — never edit schema.sql expecting a live effect.
 
-CREATE TABLE IF NOT EXISTS guilds (
+CREATE TABLE schema_migrations (
+    version INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE guilds (
     guild_id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     icon TEXT,
@@ -9,7 +21,7 @@ CREATE TABLE IF NOT EXISTS guilds (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS inviters (
+CREATE TABLE inviters (
     guild_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
     regular INTEGER DEFAULT 0,
@@ -20,7 +32,7 @@ CREATE TABLE IF NOT EXISTS inviters (
     PRIMARY KEY (guild_id, user_id)
 );
 
-CREATE TABLE IF NOT EXISTS invite_members (
+CREATE TABLE invite_members (
     guild_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
     inviter_id TEXT,
@@ -29,10 +41,12 @@ CREATE TABLE IF NOT EXISTS invite_members (
     is_fake INTEGER DEFAULT 0,
     is_left INTEGER DEFAULT 0,
     left_at DATETIME,
+    membership_cycle INTEGER NOT NULL DEFAULT 1,
+    attribution_type TEXT,
     PRIMARY KEY (guild_id, user_id)
 );
 
-CREATE TABLE IF NOT EXISTS invite_cache (
+CREATE TABLE invite_cache (
     guild_id TEXT NOT NULL,
     code TEXT NOT NULL,
     uses INTEGER DEFAULT 0,
@@ -44,7 +58,7 @@ CREATE TABLE IF NOT EXISTS invite_cache (
     PRIMARY KEY (guild_id, code)
 );
 
-CREATE TABLE IF NOT EXISTS invite_labels (
+CREATE TABLE invite_labels (
     guild_id TEXT NOT NULL,
     code TEXT NOT NULL,
     label TEXT NOT NULL,
@@ -55,7 +69,7 @@ CREATE TABLE IF NOT EXISTS invite_labels (
     PRIMARY KEY (guild_id, code)
 );
 
-CREATE TABLE IF NOT EXISTS daily_invite_stats (
+CREATE TABLE daily_invite_stats (
     guild_id TEXT NOT NULL,
     date TEXT NOT NULL,
     joins INTEGER DEFAULT 0,
@@ -64,5 +78,45 @@ CREATE TABLE IF NOT EXISTS daily_invite_stats (
     PRIMARY KEY (guild_id, date)
 );
 
-CREATE INDEX IF NOT EXISTS idx_invite_members_inviter ON invite_members (guild_id, inviter_id);
-CREATE INDEX IF NOT EXISTS idx_invite_labels_guild ON invite_labels (guild_id);
+CREATE TABLE invite_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    membership_cycle INTEGER NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN ('JOIN', 'LEAVE')),
+    attribution_type TEXT NOT NULL CHECK (attribution_type IN ('INVITE', 'VANITY', 'UNKNOWN', 'PRE_EXISTING', 'OAUTH')),
+    inviter_id TEXT,
+    invite_code TEXT,
+    is_fake INTEGER NOT NULL DEFAULT 0 CHECK (is_fake IN (0, 1)),
+    occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (guild_id, user_id, membership_cycle, event_type)
+);
+
+CREATE TABLE invite_bonus_adjustments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    reason TEXT,
+    actor_user_id TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Single definition of net invites: total = regular + bonus - leaves - fake.
+CREATE VIEW inviter_stats AS
+SELECT
+    guild_id,
+    user_id,
+    regular,
+    bonus,
+    leaves,
+    fake,
+    regular + bonus - leaves - fake AS total
+FROM inviters;
+
+CREATE INDEX idx_invite_members_inviter ON invite_members (guild_id, inviter_id);
+CREATE INDEX idx_invite_labels_guild ON invite_labels (guild_id);
+CREATE INDEX idx_invite_events_guild_time ON invite_events (guild_id, occurred_at);
+CREATE INDEX idx_invite_events_guild_inviter ON invite_events (guild_id, inviter_id);
+CREATE INDEX idx_invite_events_guild_user ON invite_events (guild_id, user_id);
+CREATE INDEX idx_bonus_adjustments_guild_user ON invite_bonus_adjustments (guild_id, user_id);

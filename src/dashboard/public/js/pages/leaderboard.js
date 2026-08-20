@@ -32,8 +32,7 @@ class LeaderboardPage {
     if (!this.currentGuildId) return;
 
     try {
-      const res = await fetch(`/api/guilds/${this.currentGuildId}/invites/leaderboard?limit=25`);
-      const data = await res.json();
+      const data = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/leaderboard?limit=25`);
       const tbody = document.querySelector('#full-leaderboard-table tbody');
       if (!tbody) return;
       tbody.innerHTML = '';
@@ -48,20 +47,20 @@ class LeaderboardPage {
         const rank = idx < 3 ? medals[idx] : `#${idx + 1}`;
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td><b>${rank}</b></td>
+          <td><b>${escapeHtml(rank)}</b></td>
           <td>
             <div class="user-cell">
-              <img src="${r.avatar}" class="user-cell-avatar">
+              <img src="${escapeHtml(r.avatar)}" class="user-cell-avatar">
               <div>
-                <div class="user-cell-name">${r.username}</div>
-                <div class="user-cell-id">${r.user_id}</div>
+                <div class="user-cell-name">${escapeHtml(r.username)}</div>
+                <div class="user-cell-id">${escapeHtml(r.user_id)}</div>
               </div>
             </div>
           </td>
-          <td><span class="badge-tag regular"><b>${r.total}</b> Net</span></td>
-          <td><span class="badge-tag regular">${r.regular}</span></td>
-          <td><span class="badge-tag leave">${r.leaves}</span></td>
-          <td><span class="badge-tag fake">${r.fake}</span></td>
+          <td><span class="badge-tag regular"><b>${escapeHtml(r.total)}</b> Net</span></td>
+          <td><span class="badge-tag regular">${escapeHtml(r.regular)}</span></td>
+          <td><span class="badge-tag leave">${escapeHtml(r.leaves)}</span></td>
+          <td><span class="badge-tag fake">${escapeHtml(r.fake)}</span></td>
         `;
         tbody.appendChild(tr);
       });

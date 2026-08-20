@@ -11,7 +11,7 @@ module.exports = {
         .setRequired(false)
     ),
 
-  async execute(interaction) {
+  async execute(interaction, client) {
     const guild = interaction.guild;
     if (!guild) {
       return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
@@ -27,13 +27,11 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      const invites = await guild.invites.fetch();
+      const invites = await client.services.invites.getActiveInvites(guild.id);
       const targetUser = interaction.options.getUser('user');
-      const inviteRepo = require('../../../database/repositories/inviteRepo');
-      const labels = inviteRepo.getInviteLabels(guild.id);
-      const labelMap = new Map(labels.map(l => [l.code, l.label]));
+      const labelMap = new Map(invites.filter(i => i.label).map(i => [i.code, i.label]));
 
-      let filtered = Array.from(invites.values());
+      let filtered = invites;
       if (targetUser) {
         filtered = filtered.filter(inv => inv.inviter?.id === targetUser.id);
       }
@@ -46,9 +44,9 @@ module.exports = {
 
       let description = '';
       filtered.slice(0, 15).forEach(inv => {
-        const creator = inv.inviter ? `<@${inv.inviter.id}>` : 'Unknown';
+        const creator = inv.inviter?.id ? `<@${inv.inviter.id}>` : 'Unknown';
         const max = inv.maxUses > 0 ? `/${inv.maxUses}` : '';
-        const customLabel = labelMap.get(inv.code);
+        const customLabel = inv.label;
         const labelText = customLabel ? ` **[🏷️ ${customLabel}]**` : '';
         description += `🔗 **[discord.gg/${inv.code}](https://discord.gg/${inv.code})**${labelText} — \`${inv.uses}${max} uses\` • Created by ${creator}\n`;
       });

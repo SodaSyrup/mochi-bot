@@ -54,8 +54,7 @@ class AnalyticsPage {
     }
 
     try {
-      const res = await fetch(`/api/guilds/${this.currentGuildId}/invites/sync-members`, { method: 'POST' });
-      const data = await res.json();
+      const data = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/sync-members`, { method: 'POST' });
 
       if (data.success) {
         window.Mochi?.showToast(`✅ ${data.message}`, 'success');
@@ -117,9 +116,8 @@ class AnalyticsPage {
     if (!this.currentGuildId) return;
 
     try {
-      const res = await fetch(`/api/guilds/${this.currentGuildId}/invites/analytics?days=7`);
-      const data = await res.json();
-      const stats = data.analytics || [];
+      const res = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/analytics?days=7`);
+      const stats = res.analytics || [];
 
       const labels = stats.map(s => s.date);
       const joinsData = stats.map(s => s.joins);
@@ -205,8 +203,7 @@ class AnalyticsPage {
 
     try {
       const url = `/api/guilds/${this.currentGuildId}/invites/activity-log?limit=${this.pageSize}&offset=${offset}&filter=${filterParam}&search=${searchParam}`;
-      const res = await fetch(url);
-      const data = await res.json();
+      const data = await apiFetch(url);
 
       const items = data.items || [];
       this.totalEntries = data.total || 0;
@@ -329,20 +326,22 @@ class AnalyticsPage {
     }
 
     // Inviter column
+    const attributionType = item.attribution?.type || '';
+    const inviterId = item.attribution?.inviterId || null;
     let inviterContent = '';
     if (item.isPreExisting) {
       inviterContent = `<span class="badge-tag bonus" title="Joined before Mochi was added — no invite data available"><i class="fa-solid fa-clock-rotate-left"></i> Not Available</span>`;
-    } else if (item.inviterId === 'VANITY') {
+    } else if (attributionType === 'VANITY') {
       inviterContent = `<span class="badge-tag bonus"><i class="fa-solid fa-globe"></i> Vanity URL</span>`;
-    } else if (!item.inviterId || item.inviterId === 'UNKNOWN') {
+    } else if (attributionType === 'UNKNOWN' || !inviterId) {
       inviterContent = `<span style="color: var(--text-dim); font-size: 12px;"><i class="fa-solid fa-question-circle"></i> Unknown / Direct</span>`;
     } else {
       inviterContent = `
         <div class="member-profile-cell">
-          <img src="${item.inviterAvatar}" class="member-avatar-img" style="width: 24px; height: 24px;" alt="Inviter" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+          <img src="${this.escapeHtml(item.inviterAvatar)}" class="member-avatar-img" style="width: 24px; height: 24px;" alt="Inviter" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
           <div class="member-meta-info">
             <span style="font-size: 12.5px; font-weight: 500; color: var(--text-main);">${this.escapeHtml(item.inviterName || 'Unknown')}</span>
-            <span class="member-id-text">${item.inviterId || 'N/A'}</span>
+            <span class="member-id-text">${this.escapeHtml(inviterId)}</span>
           </div>
         </div>
       `;
@@ -352,10 +351,10 @@ class AnalyticsPage {
       <tr>
         <td>
           <div class="member-profile-cell">
-            <img src="${item.avatar}" class="member-avatar-img" alt="Avatar" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+            <img src="${this.escapeHtml(item.avatar)}" class="member-avatar-img" alt="Avatar" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
             <div class="member-meta-info">
               <span class="member-name-text">${this.escapeHtml(item.username)}</span>
-              <span class="member-id-text">${item.userId}</span>
+              <span class="member-id-text">${this.escapeHtml(item.userId)}</span>
             </div>
           </div>
         </td>
@@ -368,7 +367,7 @@ class AnalyticsPage {
         <td>${inviterContent}</td>
         <td>${statusBadge}</td>
         <td style="white-space: nowrap;">
-          <span style="font-size: 12.5px; font-weight: 500;" title="${fullDate}">${relativeTime}</span>
+          <span style="font-size: 12.5px; font-weight: 500;" title="${this.escapeHtml(fullDate)}">${relativeTime}</span>
           <div style="font-size: 11px; color: var(--text-dim);">${eventTime ? new Date(eventTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</div>
         </td>
       </tr>

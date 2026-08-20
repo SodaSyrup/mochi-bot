@@ -1,8 +1,10 @@
-const inviteTracker = require('../services/inviteTracker');
+const { mapDiscordInvite } = require('../mappers');
 
 module.exports = {
   name: 'inviteDelete',
-  execute(invite) {
-    inviteTracker.handleInviteDelete(invite);
+  execute(invite, client) {
+    const services = client.services;
+    if (!services) return;
+    services.invites.handleInviteDeleted(mapDiscordInvite(invite));
   }
 };

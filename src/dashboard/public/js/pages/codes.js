@@ -51,8 +51,7 @@ class CodesPage {
     if (!this.currentGuildId) return;
 
     try {
-      const res = await fetch(`/api/guilds/${this.currentGuildId}/invites/active-codes`);
-      const data = await res.json();
+      const data = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/active-codes`);
       this.activeCodes = data.invites || [];
       this.renderCodesTable();
     } catch (e) {
@@ -64,8 +63,7 @@ class CodesPage {
     if (!this.currentGuildId) return;
 
     try {
-      const res = await fetch(`/api/guilds/${this.currentGuildId}/channels`);
-      const data = await res.json();
+      const data = await apiFetch(`/api/guilds/${this.currentGuildId}/channels`);
       this.channels = data.channels || [];
 
       const chanSelect = document.getElementById('create-invite-channel');
@@ -136,28 +134,30 @@ class CodesPage {
     list.forEach(inv => {
       const tr = document.createElement('tr');
       const hasLabel = Boolean(inv.label && inv.label.trim());
+      const safeCode = escapeHtml(inv.code);
+      const safeLabel = escapeHtml(inv.label || '');
 
       // Label column HTML
       let labelHtml = '';
       if (hasLabel) {
         labelHtml = `
           <div style="display: flex; align-items: center; gap: 8px;">
-            <span class="badge-label"><i class="fa-solid fa-tag"></i> ${inv.label}</span>
-            <button class="icon-btn purple" title="Edit Label" onclick="codesPage.openEditLabelModal('${inv.code}', '${encodeURIComponent(inv.label)}')">
+            <span class="badge-label"><i class="fa-solid fa-tag"></i> ${safeLabel}</span>
+            <button class="icon-btn purple" title="Edit Label" onclick="codesPage.openEditLabelModal('${safeCode}')">
               <i class="fa-solid fa-pen" style="font-size: 11px;"></i>
             </button>
           </div>
         `;
       } else {
         labelHtml = `
-          <button class="badge-unlabeled" onclick="codesPage.openEditLabelModal('${inv.code}', '')">
+          <button class="badge-unlabeled" onclick="codesPage.openEditLabelModal('${safeCode}')">
             <i class="fa-solid fa-plus"></i> Add Label
           </button>
         `;
       }
 
       // Channel column HTML
-      const chanName = inv.channelName || (inv.channelId ? inv.channelId.replace('chan_', '') : 'general');
+      const chanName = escapeHtml(inv.channelName || (inv.channelId ? inv.channelId.replace('chan_', '') : 'general'));
       const channelHtml = `<span class="badge-channel"><i class="fa-solid fa-hashtag"></i> ${chanName}</span>`;
 
       // Uses / Limit
@@ -166,15 +166,15 @@ class CodesPage {
       const usesBadgeClass = usesCount > 0 ? 'regular' : 'bonus';
 
       // Creator
-      const creatorName = inv.inviter?.username || inv.inviterId || 'Server';
+      const creatorName = escapeHtml(inv.inviter?.username || inv.inviterId || 'Server');
 
       tr.innerHTML = `
         <td>
           <div style="display: flex; align-items: center; gap: 8px;">
-            <a href="https://discord.gg/${inv.code}" target="_blank" style="font-family: var(--font-mono); font-weight: 600; color: #fff; text-decoration: none;">
-              discord.gg/${inv.code}
+            <a href="https://discord.gg/${safeCode}" target="_blank" style="font-family: var(--font-mono); font-weight: 600; color: #fff; text-decoration: none;">
+              discord.gg/${safeCode}
             </a>
-            <button class="icon-btn" title="Copy Link" onclick="navigator.clipboard.writeText('https://discord.gg/${inv.code}'); window.Mochi.showToast('Copied invite link: https://discord.gg/${inv.code}', 'success');">
+            <button class="icon-btn" title="Copy Link" onclick="navigator.clipboard.writeText('https://discord.gg/${safeCode}'); window.Mochi.showToast('Copied invite link: https://discord.gg/${safeCode}', 'success');">
               <i class="fa-solid fa-copy" style="font-size: 11px;"></i>
             </button>
           </div>
@@ -193,10 +193,10 @@ class CodesPage {
         </td>
         <td style="text-align: right;">
           <div class="action-btn-group">
-            <button class="btn btn-secondary btn-sm" onclick="codesPage.openEditLabelModal('${inv.code}', '${encodeURIComponent(inv.label || '')}')">
+            <button class="btn btn-secondary btn-sm" onclick="codesPage.openEditLabelModal('${safeCode}')">
               <i class="fa-solid fa-tag"></i> Label
             </button>
-            <button class="icon-btn danger" title="Revoke Invite" onclick="codesPage.deleteInvite('${inv.code}')">
+            <button class="icon-btn danger" title="Revoke Invite" onclick="codesPage.deleteInvite('${safeCode}')">
               <i class="fa-solid fa-trash-can" style="font-size: 12px;"></i>
             </button>
           </div>
@@ -258,7 +258,7 @@ class CodesPage {
 
     if (badgeContainer) {
       if (labelVal) {
-        badgeContainer.innerHTML = `<span class="badge-label"><i class="fa-solid fa-tag"></i> ${labelVal}</span>`;
+        badgeContainer.innerHTML = `<span class="badge-label"><i class="fa-solid fa-tag"></i> ${escapeHtml(labelVal)}</span>`;
       } else {
         badgeContainer.innerHTML = `<span class="badge-unlabeled" style="pointer-events: none;">No Label</span>`;
       }
@@ -281,25 +281,25 @@ class CodesPage {
     }
 
     try {
-      const res = await fetch(`/api/guilds/${this.currentGuildId}/invites`, {
+      const data = await apiFetch(`/api/guilds/${this.currentGuildId}/invites`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           channelId,
           label,
           maxAge: parseInt(maxAge, 10) || 0,
           maxUses: parseInt(maxUses, 10) || 0,
           temporary
-        })
+        }
       });
-
-      const data = await res.json();
 
       if (data.success && data.invite) {
         if (navigator.clipboard) {
           navigator.clipboard.writeText(data.invite.url);
         }
-        window.Mochi.showToast(`🎉 Created invite <b>${data.invite.code}</b>${data.invite.label ? ` (🏷️ ${data.invite.label})` : ''} & copied to clipboard!`, 'success');
+        const parts = [{ text: 'Created invite ' }, { code: data.invite.code }];
+        if (data.invite.label) parts.push({ text: ` (🏷️ ${data.invite.label})` });
+        parts.push({ text: ' & copied to clipboard!' });
+        window.Mochi.showToast(parts, 'success');
         this.closeCreateInviteModal();
         await this.fetchActiveCodes();
       } else {
@@ -307,7 +307,7 @@ class CodesPage {
       }
     } catch (err) {
       console.error('Error creating invite:', err);
-      window.Mochi.showToast('Network error creating invite', 'leave');
+      window.Mochi.showToast(err.status === 403 ? 'You do not have permission to create invites.' : 'Network error creating invite', 'leave');
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -316,9 +316,10 @@ class CodesPage {
     }
   }
 
-  openEditLabelModal(code, currentLabelEncoded) {
+  openEditLabelModal(code) {
     this.editingInviteCode = code;
-    const currentLabel = decodeURIComponent(currentLabelEncoded || '');
+    const invite = this.activeCodes.find(i => i.code === code);
+    const currentLabel = invite?.label || '';
 
     const codeDisplay = document.getElementById('edit-modal-code-display');
     const input = document.getElementById('edit-label-input');
@@ -341,15 +342,17 @@ class CodesPage {
     const label = document.getElementById('edit-label-input').value.trim();
 
     try {
-      const res = await fetch(`/api/guilds/${this.currentGuildId}/invites/${this.editingInviteCode}/label`, {
+      const data = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/${this.editingInviteCode}/label`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label })
+        body: { label }
       });
-
-      const data = await res.json();
       if (data.success) {
-        window.Mochi.showToast(`🏷️ Label updated for <code>${this.editingInviteCode}</code>: ${label ? `<b>${label}</b>` : 'Removed'}`, 'success');
+        const parts = [
+          { text: 'Label updated for ' },
+          { code: this.editingInviteCode },
+          { text: label ? `: ${label}` : ': Removed' }
+        ];
+        window.Mochi.showToast(parts, 'success');
         this.closeEditLabelModal();
         await this.fetchActiveCodes();
       }
@@ -363,13 +366,11 @@ class CodesPage {
     if (!this.currentGuildId || !this.editingInviteCode) return;
 
     try {
-      const res = await fetch(`/api/guilds/${this.currentGuildId}/invites/${this.editingInviteCode}/label`, {
+      const data = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/${this.editingInviteCode}/label`, {
         method: 'DELETE'
       });
-
-      const data = await res.json();
       if (data.success) {
-        window.Mochi.showToast(`🗑️ Label removed from <code>${this.editingInviteCode}</code>`, 'success');
+        window.Mochi.showToast([{ text: 'Label removed from ' }, { code: this.editingInviteCode }], 'success');
         this.closeEditLabelModal();
         await this.fetchActiveCodes();
       }
@@ -385,13 +386,11 @@ class CodesPage {
     }
 
     try {
-      const res = await fetch(`/api/guilds/${this.currentGuildId}/invites/${code}`, {
+      const data = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/${code}`, {
         method: 'DELETE'
       });
-
-      const data = await res.json();
       if (data.success) {
-        window.Mochi.showToast(`🗑️ Revoked invite <code>${code}</code>`, 'success');
+        window.Mochi.showToast([{ text: 'Revoked invite ' }, { code }], 'success');
         await this.fetchActiveCodes();
       } else {
         window.Mochi.showToast('Failed to revoke invite', 'leave');

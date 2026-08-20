@@ -1,6 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
 const embedBuilder = require('../../services/embedBuilder');
-const inviteRepo = require('../../../database/repositories/inviteRepo');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -8,19 +7,25 @@ module.exports = {
     .setDescription('Display detailed information and invite records for a user')
     .addUserOption(opt => opt.setName('user').setDescription('Target user').setRequired(false)),
 
-  async execute(interaction) {
+  async execute(interaction, client) {
     const targetUser = interaction.options.getUser('user') || interaction.user;
     const member = await interaction.guild?.members.fetch(targetUser.id).catch(() => null);
     const guildId = interaction.guildId;
 
-    const stats = guildId ? inviteRepo.getInviter(guildId, targetUser.id) : null;
-    const memberRecord = guildId ? inviteRepo.getInviteMember(guildId, targetUser.id) : null;
+    const stats = guildId ? client.services.invites.getInviterStats(guildId, targetUser.id) : null;
+    const memberRecord = guildId ? client.services.invites.getCurrentMember(guildId, targetUser.id) : null;
 
     let inviterText = 'None / Direct';
-    if (memberRecord?.inviter_id) {
-      if (memberRecord.inviter_id === 'VANITY') inviterText = 'Vanity URL';
-      else if (memberRecord.inviter_id === 'UNKNOWN') inviterText = 'Direct / Unknown';
-      else inviterText = `<@${memberRecord.inviter_id}>`;
+    if (memberRecord?.attribution_type) {
+      if (memberRecord.attribution_type === 'INVITE' && memberRecord.inviter_id) {
+        inviterText = `<@${memberRecord.inviter_id}>`;
+      } else if (memberRecord.attribution_type === 'VANITY') {
+        inviterText = 'Vanity URL';
+      } else if (memberRecord.attribution_type === 'UNKNOWN') {
+        inviterText = 'Direct / Unknown';
+      } else if (memberRecord.attribution_type === 'PRE_EXISTING') {
+        inviterText = 'Pre-Bot (Unknown)';
+      }
     }
 
     const embed = embedBuilder.base({
@@ -35,7 +40,7 @@ module.exports = {
         { name: '🏷️ Invite Code', value: memberRecord?.invite_code ? `\`${memberRecord.invite_code}\`` : '`None`', inline: true },
         {
           name: '📊 Invites Created By User',
-          value: stats ? `**${stats.total}** Net \`(${stats.regular} regular, ${stats.leaves} leaves, ${stats.fake} fake)\`` : '`0`',
+          value: stats ? `**${stats.total}** Net \`(${stats.regular} regular, ${stats.bonus} bonus, ${stats.leaves} leaves, ${stats.fake} fake)\`` : '`0`',
           inline: false
         }
       ]

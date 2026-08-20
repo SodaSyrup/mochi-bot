@@ -1,13 +1,12 @@
 const { SlashCommandBuilder } = require('discord.js');
 const embedBuilder = require('../../services/embedBuilder');
-const inviteRepo = require('../../../database/repositories/inviteRepo');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('serverinfo')
     .setDescription('Display detailed statistics and information about this server'),
 
-  async execute(interaction) {
+  async execute(interaction, client) {
     const { guild } = interaction;
     if (!guild) {
       return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
@@ -18,7 +17,7 @@ module.exports = {
     const textChannels = channels.filter(c => c.isTextBased()).size;
     const voiceChannels = channels.filter(c => c.isVoiceBased()).size;
     const rolesCount = guild.roles.cache.size;
-    const invitersCount = inviteRepo.getInvitersCount(guild.id);
+    const invitersCount = client.services.invites.getInvitersCount(guild.id);
 
     const embed = embedBuilder.base({
       title: `🏰 ${guild.name}`,
