@@ -1,5 +1,5 @@
 /**
- * 🍡 Settings Page Script
+ * Settings Page Script
  */
 
 class SettingsPage {
@@ -17,7 +17,7 @@ class SettingsPage {
 
   async refreshStatus() {
     await window.Mochi.fetchStats();
-    window.Mochi.showToast('Bot connection telemetry refreshed!', 'success');
+    window.Mochi.showToast('Status refreshed.', 'success');
   }
 }
 

@@ -1,5 +1,5 @@
 /**
- * 🍡 Active Codes & Labels Page Script
+ * Invite Links (codes) Page Script
  */
 
 class CodesPage {
@@ -23,6 +23,11 @@ class CodesPage {
       this.currentGuildId = guildId;
       this.fetchActiveCodes();
       this.fetchChannels();
+    });
+
+    window.addEventListener('mochi:close-modals', () => {
+      this.closeCreateInviteModal();
+      this.closeEditLabelModal();
     });
 
     window.Mochi.onRealtime('inviteCreated', () => {
@@ -86,7 +91,7 @@ class CodesPage {
 
   setCodesFilter(filter) {
     this.codesFilter = filter;
-    document.querySelectorAll('.filter-btn').forEach(btn => {
+    document.querySelectorAll('#codes-filter-bar .seg-btn').forEach(btn => {
       btn.classList.toggle('active', btn.getAttribute('data-filter') === filter);
     });
     this.renderCodesTable();
@@ -105,7 +110,7 @@ class CodesPage {
 
     let list = this.activeCodes;
 
-    // Apply Filter Tab
+    // Apply Filter
     if (this.codesFilter === 'labeled') {
       list = list.filter(i => Boolean(i.label && i.label.trim()));
     } else if (this.codesFilter === 'unlabeled') {
@@ -124,10 +129,13 @@ class CodesPage {
     }
 
     if (list.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 30px;">
-        <i class="fa-solid fa-link-slash" style="font-size: 24px; margin-bottom: 8px; display: block; opacity: 0.4;"></i>
-        No invite codes match your criteria. Click <b>"Create Invite"</b> to generate one!
-      </td></tr>`;
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" class="empty-state">
+            <div class="empty-title">No invite links found.</div>
+            <div class="empty-hint">Create an invite to start tracking a campaign.</div>
+          </td>
+        </tr>`;
       return;
     }
 
@@ -141,69 +149,56 @@ class CodesPage {
       let labelHtml = '';
       if (hasLabel) {
         labelHtml = `
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span class="badge-label"><i class="fa-solid fa-tag"></i> ${safeLabel}</span>
-            <button class="icon-btn purple" title="Edit Label" onclick="codesPage.openEditLabelModal('${safeCode}')">
-              <i class="fa-solid fa-pen" style="font-size: 11px;"></i>
-            </button>
-          </div>
-        `;
+          <span class="badge badge-neutral">${safeLabel}</span>
+          <button class="button-icon" title="Edit label" aria-label="Edit label" onclick="codesPage.openEditLabelModal('${safeCode}')">
+            <i class="fa-solid fa-pen" aria-hidden="true"></i>
+          </button>`;
       } else {
         labelHtml = `
-          <button class="badge-unlabeled" onclick="codesPage.openEditLabelModal('${safeCode}')">
-            <i class="fa-solid fa-plus"></i> Add Label
-          </button>
-        `;
+          <button class="button button-secondary button-sm" onclick="codesPage.openEditLabelModal('${safeCode}')">Add label</button>`;
       }
 
-      // Channel column HTML
+      // Channel column
       const chanName = escapeHtml(inv.channelName || (inv.channelId ? inv.channelId.replace('chan_', '') : 'general'));
-      const channelHtml = `<span class="badge-channel"><i class="fa-solid fa-hashtag"></i> ${chanName}</span>`;
 
       // Uses / Limit
       const usesCount = inv.uses || 0;
-      const maxUsesText = inv.maxUses > 0 ? `/ ${inv.maxUses}` : '(Unlimited)';
-      const usesBadgeClass = usesCount > 0 ? 'regular' : 'bonus';
+      const maxUsesText = inv.maxUses > 0 ? `/ ${inv.maxUses}` : 'unlimited';
 
       // Creator
       const creatorName = escapeHtml(inv.inviter?.username || inv.inviterId || 'Server');
 
       tr.innerHTML = `
         <td>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <a href="https://discord.gg/${safeCode}" target="_blank" style="font-family: var(--font-mono); font-weight: 600; color: #fff; text-decoration: none;">
-              discord.gg/${safeCode}
-            </a>
-            <button class="icon-btn" title="Copy Link" onclick="navigator.clipboard.writeText('https://discord.gg/${safeCode}'); window.Mochi.showToast('Copied invite link: https://discord.gg/${safeCode}', 'success');">
-              <i class="fa-solid fa-copy" style="font-size: 11px;"></i>
+          <div class="invite-link-cell">
+            <a class="mono invite-link" href="https://discord.gg/${safeCode}" target="_blank" rel="noopener">discord.gg/${safeCode}</a>
+            <button class="button-icon" title="Copy link" aria-label="Copy link" onclick="codesPage.copyInviteCode('${safeCode}')">
+              <i class="fa-solid fa-copy" aria-hidden="true"></i>
             </button>
           </div>
         </td>
-        <td>${labelHtml}</td>
-        <td>${channelHtml}</td>
-        <td>
-          <span class="badge-tag ${usesBadgeClass}">
-            <b>${usesCount}</b> ${maxUsesText}
-          </span>
-        </td>
-        <td>
-          <div style="font-size: 13px; font-weight: 600; color: var(--text-muted);">
-            <i class="fa-solid fa-user-astronaut" style="color: var(--accent-purple); margin-right: 4px;"></i> ${creatorName}
-          </div>
-        </td>
-        <td style="text-align: right;">
-          <div class="action-btn-group">
-            <button class="btn btn-secondary btn-sm" onclick="codesPage.openEditLabelModal('${safeCode}')">
-              <i class="fa-solid fa-tag"></i> Label
-            </button>
-            <button class="icon-btn danger" title="Revoke Invite" onclick="codesPage.deleteInvite('${safeCode}')">
-              <i class="fa-solid fa-trash-can" style="font-size: 12px;"></i>
-            </button>
-          </div>
+        <td><div class="label-cell">${labelHtml}</div></td>
+        <td><span class="channel-name"># ${chanName}</span></td>
+        <td><span class="num">${usesCount}</span> <span class="text-muted text-small">${maxUsesText}</span></td>
+        <td><span class="text-secondary">${creatorName}</span></td>
+        <td class="actions-group">
+          <button class="button button-secondary button-sm" onclick="codesPage.openEditLabelModal('${safeCode}')">Label</button>
+          <button class="button-icon danger" title="Delete invite" aria-label="Delete invite" onclick="codesPage.deleteInvite('${safeCode}')">
+            <i class="fa-solid fa-trash" aria-hidden="true"></i>
+          </button>
         </td>
       `;
       tbody.appendChild(tr);
     });
+  }
+
+  async copyInviteCode(code) {
+    try {
+      await navigator.clipboard.writeText(`https://discord.gg/${code}`);
+      window.Mochi.showToast([{ text: 'Copied invite link: ' }, { code: code }], 'success');
+    } catch (e) {
+      window.Mochi.showToast('Could not copy the invite link.', 'leave');
+    }
   }
 
   openCreateInviteModal() {
@@ -221,6 +216,8 @@ class CodesPage {
     this.updatePreview();
     const modal = document.getElementById('create-invite-modal');
     if (modal) modal.classList.add('active');
+    const channelSelect = document.getElementById('create-invite-channel');
+    if (channelSelect) channelSelect.focus();
   }
 
   closeCreateInviteModal() {
@@ -228,20 +225,12 @@ class CodesPage {
     if (modal) modal.classList.remove('active');
   }
 
-  setLabelSuggestion(text) {
-    const input = document.getElementById('create-invite-label');
-    if (input) {
-      input.value = text;
-      this.updatePreview();
-    }
-  }
-
   updatePreview() {
     const labelInput = document.getElementById('create-invite-label');
     const labelVal = labelInput ? labelInput.value.trim() : '';
 
     const chanSelect = document.getElementById('create-invite-channel');
-    const chanText = chanSelect && chanSelect.selectedOptions[0] ? chanSelect.selectedOptions[0].textContent : '# general';
+    const chanText = chanSelect && chanSelect.selectedOptions[0] ? chanSelect.selectedOptions[0].textContent.trim() : '# general';
 
     const maxUsesSelect = document.getElementById('create-invite-max-uses');
     const maxUsesText = maxUsesSelect ? maxUsesSelect.selectedOptions[0].textContent : 'Unlimited uses';
@@ -249,19 +238,16 @@ class CodesPage {
     const maxAgeSelect = document.getElementById('create-invite-max-age');
     const maxAgeText = maxAgeSelect ? maxAgeSelect.selectedOptions[0].textContent : 'Never';
 
-    const badgeContainer = document.getElementById('preview-badge-container');
+    const previewUrl = document.getElementById('preview-url');
     const details = document.getElementById('preview-details');
+    const previewLabel = document.getElementById('preview-label');
 
+    if (previewUrl) previewUrl.textContent = 'discord.gg/invite';
     if (details) {
-      details.textContent = `Destination: ${chanText} • ${maxUsesText} • Expires: ${maxAgeText}`;
+      details.textContent = `Destination: ${chanText} · ${maxUsesText} · Expires: ${maxAgeText}`;
     }
-
-    if (badgeContainer) {
-      if (labelVal) {
-        badgeContainer.innerHTML = `<span class="badge-label"><i class="fa-solid fa-tag"></i> ${escapeHtml(labelVal)}</span>`;
-      } else {
-        badgeContainer.innerHTML = `<span class="badge-unlabeled" style="pointer-events: none;">No Label</span>`;
-      }
+    if (previewLabel) {
+      previewLabel.textContent = labelVal || 'None';
     }
   }
 
@@ -277,7 +263,7 @@ class CodesPage {
     const submitBtn = document.getElementById('btn-submit-create-invite');
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating...`;
+      submitBtn.textContent = 'Creating…';
     }
 
     try {
@@ -297,21 +283,21 @@ class CodesPage {
           navigator.clipboard.writeText(data.invite.url);
         }
         const parts = [{ text: 'Created invite ' }, { code: data.invite.code }];
-        if (data.invite.label) parts.push({ text: ` (🏷️ ${data.invite.label})` });
-        parts.push({ text: ' & copied to clipboard!' });
+        if (data.invite.label) parts.push({ text: ` (${data.invite.label})` });
+        parts.push({ text: ' and copied to clipboard.' });
         window.Mochi.showToast(parts, 'success');
         this.closeCreateInviteModal();
         await this.fetchActiveCodes();
       } else {
-        window.Mochi.showToast('Failed to create invite: ' + (data.message || 'Unknown error'), 'leave');
+        window.Mochi.showToast('Could not create invite: ' + (data.message || 'Unknown error'), 'leave');
       }
     } catch (err) {
       console.error('Error creating invite:', err);
-      window.Mochi.showToast(err.status === 403 ? 'You do not have permission to create invites.' : 'Network error creating invite', 'leave');
+      window.Mochi.showToast(err.status === 403 ? 'You do not have permission to create invites.' : 'Network error creating invite.', 'leave');
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false;
-        submitBtn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Create & Generate Invite`;
+        submitBtn.textContent = 'Create invite';
       }
     }
   }
@@ -328,6 +314,7 @@ class CodesPage {
 
     const modal = document.getElementById('edit-label-modal');
     if (modal) modal.classList.add('active');
+    if (input) input.focus();
   }
 
   closeEditLabelModal() {
@@ -350,7 +337,7 @@ class CodesPage {
         const parts = [
           { text: 'Label updated for ' },
           { code: this.editingInviteCode },
-          { text: label ? `: ${label}` : ': Removed' }
+          { text: label ? `: ${label}` : ': removed.' }
         ];
         window.Mochi.showToast(parts, 'success');
         this.closeEditLabelModal();
@@ -358,7 +345,7 @@ class CodesPage {
       }
     } catch (err) {
       console.error('Error updating label:', err);
-      window.Mochi.showToast('Failed to update label', 'leave');
+      window.Mochi.showToast('Could not update label.', 'leave');
     }
   }
 
@@ -376,12 +363,12 @@ class CodesPage {
       }
     } catch (err) {
       console.error('Error removing label:', err);
-      window.Mochi.showToast('Failed to remove label', 'leave');
+      window.Mochi.showToast('Could not remove label.', 'leave');
     }
   }
 
   async deleteInvite(code) {
-    if (!confirm(`Are you sure you want to revoke and delete invite discord.gg/${code}?`)) {
+    if (!confirm(`Delete invite discord.gg/${code}? This cannot be undone.`)) {
       return;
     }
 
@@ -393,11 +380,11 @@ class CodesPage {
         window.Mochi.showToast([{ text: 'Revoked invite ' }, { code }], 'success');
         await this.fetchActiveCodes();
       } else {
-        window.Mochi.showToast('Failed to revoke invite', 'leave');
+        window.Mochi.showToast('Could not revoke invite.', 'leave');
       }
     } catch (err) {
       console.error('Error revoking invite:', err);
-      window.Mochi.showToast('Network error revoking invite', 'leave');
+      window.Mochi.showToast('Network error revoking invite.', 'leave');
     }
   }
 }

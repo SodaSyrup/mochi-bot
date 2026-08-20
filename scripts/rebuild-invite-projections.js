@@ -15,9 +15,26 @@
  * unauthenticated HTTP endpoint for it.
  */
 const config = require('../src/config');
+const { resolveDatabasePath } = require('../src/config');
 const { createDatabase } = require('../src/database/createDatabase');
 const { runMigrations } = require('../src/database/migrations');
 const { rebuildGuildInviteProjections } = require('../src/features/invites/infrastructure/projectionRebuilder');
+
+// All durable sources that can identify a guild, so a guild is never skipped
+// merely because it currently has no invite event row. Projection-only rows
+// (stale members/inviters/daily stats with no ledger) are still included so an
+// integrity/repair run can clear them.
+const ALL_GUILD_IDS_SQL = `
+  SELECT guild_id FROM invite_events
+  UNION
+  SELECT guild_id FROM invite_bonus_adjustments
+  UNION
+  SELECT guild_id FROM invite_members
+  UNION
+  SELECT guild_id FROM inviters
+  UNION
+  SELECT guild_id FROM daily_invite_stats
+`;
 
 function parseArgs(argv) {
   const args = { guilds: [], dryRun: false };
@@ -36,18 +53,20 @@ function parseArgs(argv) {
 
 async function main() {
   const { guilds: targetGuilds, dryRun } = parseArgs(process.argv);
-  const db = createDatabase({ path: config.database.path });
+  // Same DB path resolution as application composition — never a copy of the
+  // demo-vs-normal ternary.
+  const db = createDatabase({ path: resolveDatabasePath(config) });
   runMigrations(db);
 
   let guildIds;
   if (targetGuilds.length > 0) {
     guildIds = targetGuilds;
   } else {
-    guildIds = db.prepare('SELECT DISTINCT guild_id FROM invite_events').all().map((r) => r.guild_id);
+    guildIds = db.prepare(ALL_GUILD_IDS_SQL).all().map((r) => r.guild_id);
   }
 
   if (guildIds.length === 0) {
-    console.log('No guild activity found in the ledger; nothing to rebuild.');
+    console.log('No guild activity found; nothing to rebuild.');
     db.close();
     return;
   }

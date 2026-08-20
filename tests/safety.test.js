@@ -154,6 +154,54 @@ async function runSafetyTests() {
     await ctx.server.close();
   });
 
+  suite.testAsync('service does NOT publish AutoModRuleUpdated after a mutation (Option A: Discord echo is authoritative)', async () => {
+    const { createRecordingBus } = require('./helpers/fakes');
+    const { SafetyEvents } = require('../src/app/eventBus');
+    const bus = createRecordingBus();
+    const gateway = {
+      async createAutoModRule() {
+        return { id: 'r1', guildId: 'g', name: 'X', enabled: true };
+      },
+      async editAutoModRule() {
+        return { id: 'r1', guildId: 'g', name: 'Y', enabled: false };
+      },
+      async deleteAutoModRule() {
+        return { ruleId: 'r1' };
+      },
+    };
+    const service = new SafetyService({ safetyGateway: gateway, eventBus: bus, logger: silentLogger });
+
+    await service.createRule('g', { name: 'X' });
+    await service.updateRule('g', 'r1', { enabled: false });
+    await service.deleteRule('g', 'r1');
+
+    const ruleEvents = bus.recorded.filter((r) => r.event === SafetyEvents.AutoModRuleUpdated);
+    assert.strictEqual(ruleEvents.length, 0, 'service must rely on the Discord echo, not publish a duplicate');
+  });
+
+  suite.testAsync('demo safety gateway publishes exactly one canonical event per mutation', async () => {
+    const { createRecordingBus } = require('./helpers/fakes');
+    const { SafetyEvents } = require('../src/app/eventBus');
+    const { DemoSafetyGateway } = require('../src/demo/demoSafetyGateway');
+    const bus = createRecordingBus();
+    const gateway = new DemoSafetyGateway({ eventBus: bus });
+
+    const created = await gateway.createAutoModRule(DEMO_GUILD_ID, { name: 'Demo Rule', enabled: true });
+    await gateway.editAutoModRule(DEMO_GUILD_ID, created.id, { enabled: false });
+
+    const events = bus.recorded.filter((r) => r.event === SafetyEvents.AutoModRuleUpdated);
+    assert.strictEqual(events.length, 2, 'one event per mutation, exactly');
+
+    // Canonical flattened shape, not a nested rule object.
+    const first = events[0].payload;
+    assert.strictEqual(first.action, 'create');
+    assert.strictEqual(first.ruleId, created.id);
+    assert.strictEqual(first.name, 'Demo Rule');
+    assert.strictEqual(first.enabled, true);
+    assert.strictEqual(first.guildId, DEMO_GUILD_ID);
+    assert.ok(!('rule' in first), 'payload must be flattened, never nested rule');
+  });
+
   return suite.run();
 }
 

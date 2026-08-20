@@ -63,6 +63,15 @@ class SocketGateway {
         this.logger.warn('realtime', 'joinGuild', 'Unauthorized guild room access denied', { guildId, userId: user.id });
         return this.#respond(ack, { success: false, error: 'FORBIDDEN' });
       }
+      // canViewGuild may have refreshed OAuth credentials / the guild permission
+      // snapshot on the socket's session. The socket handshake response already
+      // ended, so express-session will NOT save it automatically — persist it
+      // explicitly or the refreshed material is lost.
+      if (typeof session?.save === 'function') {
+        await new Promise((resolve, reject) => {
+          session.save((err) => (err ? reject(err) : resolve()));
+        });
+      }
       socket.join(guildRoom(guildId));
       this.#respond(ack, { success: true });
     } catch (err) {

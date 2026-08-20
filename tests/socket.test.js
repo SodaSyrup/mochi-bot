@@ -220,6 +220,26 @@ async function runSocketTests() {
     assert.strictEqual(count, 1, 'exactly one delivery expected');
   });
 
+  suite.testAsync('one canonical autoModRuleUpdated event yields exactly one delivery', async () => {
+    // Mirrors the dedup model: a single logical rule change (whether from the
+    // service path or the Discord echo) publishes one canonical event, which
+    // must reach the room exactly once.
+    const ack = await emitWithAck(authed, 'joinGuild', DEMO_GUILD_ID);
+    assert.strictEqual(ack.success, true);
+
+    let count = 0;
+    authed.on('autoModRuleUpdated', () => { count += 1; });
+    ctx.services.eventBus.emit(SafetyEvents.AutoModRuleUpdated, {
+      guildId: DEMO_GUILD_ID,
+      action: 'update',
+      ruleId: 'r1',
+      name: 'Spam Filter',
+      enabled: true,
+    });
+    await sleep(150);
+    assert.strictEqual(count, 1, 'exactly one rule-update delivery expected');
+  });
+
   anon?.close();
   authed?.close();
   await ctx?.server?.close();
@@ -271,55 +291,59 @@ async function runSocketIsolationTests() {
   });
 
   suite.testAsync('member event for guild B: A receives nothing, B receives exactly one', async () => {
-    await expectNoSocketEvent(socketA, 'memberJoin');
-
-    let bCount = 0;
-    const bReceived = waitForEvent(socketB, 'memberJoin').then((d) => { bCount += 1; return d; });
+    // The no-leak listener must be ACTIVE while the event is published.
+    // Creating the promise attaches the listener synchronously; we publish only
+    // after both promises exist, then await them together.
+    const noLeak = expectNoSocketEvent(socketA, 'memberJoin');
+    const bReceived = waitForEvent(socketB, 'memberJoin');
     ctx.services.eventBus.emit(InviteEvents.MemberJoined, buildCanonicalJoin('guildB'));
-    const received = await bReceived;
-    await sleep(50);
 
+    const [, received] = await Promise.all([noLeak, bReceived]);
     assert.strictEqual(received.member.username, 'Alice');
     assert.strictEqual(received.guildId, 'guildB');
-    assert.strictEqual(bCount, 1, 'guild B must receive exactly one member event');
+
+    let bCount = 0;
+    socketB.on('memberJoin', () => { bCount += 1; });
+    await sleep(50);
+    assert.strictEqual(bCount, 0, 'guild B must receive exactly one member event (no echo)');
   });
 
   suite.testAsync('leave event for guild B uses the same member contract and stays isolated', async () => {
-    await expectNoSocketEvent(socketA, 'memberLeave');
-
-    let bCount = 0;
-    const bReceived = waitForEvent(socketB, 'memberLeave').then((d) => { bCount += 1; return d; });
+    const noLeak = expectNoSocketEvent(socketA, 'memberLeave');
+    const bReceived = waitForEvent(socketB, 'memberLeave');
     ctx.services.eventBus.emit(InviteEvents.MemberLeft, buildCanonicalLeave('guildB'));
-    const received = await bReceived;
-    await sleep(50);
 
+    const [, received] = await Promise.all([noLeak, bReceived]);
     assert.strictEqual(received.member.username, 'Bob');
     assert.strictEqual(received.guildId, 'guildB');
-    assert.strictEqual(bCount, 1);
+
+    let bCount = 0;
+    socketB.on('memberLeave', () => { bCount += 1; });
+    await sleep(50);
+    assert.strictEqual(bCount, 0, 'guild B must receive exactly one leave event');
   });
 
   suite.testAsync('invite event for guild B is isolated and carries the invite code', async () => {
-    await expectNoSocketEvent(socketA, 'inviteCreated');
-
-    let bCount = 0;
-    const bReceived = waitForEvent(socketB, 'inviteCreated').then((d) => { bCount += 1; return d; });
+    const noLeak = expectNoSocketEvent(socketA, 'inviteCreated');
+    const bReceived = waitForEvent(socketB, 'inviteCreated');
     ctx.services.eventBus.emit(InviteEvents.InviteCreated, {
       guildId: 'guildB',
       invite: { code: 'iso-abc', url: 'https://discord.gg/iso-abc', uses: 0, maxUses: 0, maxAge: 0, temporary: false, inviter: { id: 'u1', username: 'U' }, createdAt: '2026-01-01T00:00:00.000Z', label: null },
       occurredAt: '2026-01-01T00:00:00.000Z',
     });
-    const received = await bReceived;
-    await sleep(50);
 
+    const [, received] = await Promise.all([noLeak, bReceived]);
     assert.strictEqual(received.invite.code, 'iso-abc');
-    assert.strictEqual(bCount, 1);
+
+    let bCount = 0;
+    socketB.on('inviteCreated', () => { bCount += 1; });
+    await sleep(50);
+    assert.strictEqual(bCount, 0, 'guild B must receive exactly one invite event');
   });
 
   suite.testAsync('autoMod execution for guild B is isolated', async () => {
-    await expectNoSocketEvent(socketA, 'autoModExecution');
-
-    let bCount = 0;
-    const bReceived = waitForEvent(socketB, 'autoModExecution').then((d) => { bCount += 1; return d; });
+    const noLeak = expectNoSocketEvent(socketA, 'autoModExecution');
+    const bReceived = waitForEvent(socketB, 'autoModExecution');
     ctx.services.eventBus.emit(SafetyEvents.AutoModExecution, {
       guildId: 'guildB',
       guildName: 'Guild B',
@@ -335,11 +359,14 @@ async function runSocketIsolationTests() {
       matchedKeyword: 'x',
       executedAt: '2026-01-01T00:00:00.000Z',
     });
-    const received = await bReceived;
-    await sleep(50);
 
+    const [, received] = await Promise.all([noLeak, bReceived]);
     assert.strictEqual(received.ruleName, 'Spam Filter');
-    assert.strictEqual(bCount, 1);
+
+    let bCount = 0;
+    socketB.on('autoModExecution', () => { bCount += 1; });
+    await sleep(50);
+    assert.strictEqual(bCount, 0, 'guild B must receive exactly one autoMod execution event');
   });
 
   socketA?.close();
@@ -349,10 +376,153 @@ async function runSocketIsolationTests() {
   return suite.run();
 }
 
-module.exports = { runSocketTests, runSocketIsolationTests };
+/**
+ * Proves that when GuildPermissionService refreshes OAuth credentials or the
+ * guild permission snapshot during Socket.IO authorization, the refreshed
+ * session is persisted to the session store. Uses the real socket transport
+ * (polling) so the express-session socket handshake path is exercised.
+ */
+async function runSocketSessionPersistenceTests() {
+  const suite = new TestSuite('Socket.IO Session Persistence');
+  const express = require('express');
+  const http = require('http');
+  const { Server: SocketIOServer } = require('socket.io');
+  const sessionMiddleware = require('express-session');
+  const { SocketGateway } = require('../src/dashboard/realtime/socketGateway');
+  const { GuildPermissionService } = require('../src/dashboard/auth/guildPermissionService');
+  const { GuildAccessService } = require('../src/dashboard/auth/guildAccessService');
+  const { createEventBus } = require('../src/app/eventBus');
+  const { silentLogger } = require('./helpers/server');
+
+  let server;
+  let io;
+  let baseUrl;
+
+  suite.testAsync('refreshed OAuth material during socket join is written back to the session store', async () => {
+    const store = new sessionMiddleware.MemoryStore();
+    const mid = sessionMiddleware({
+      name: 'sid',
+      secret: 'socket-session-test-secret',
+      store,
+      resave: false,
+      saveUninitialized: false,
+    });
+
+    const app = express();
+    app.use(mid);
+    // Seed a session whose access token and permission snapshot are both stale.
+    app.get('/seed', (req, res) => {
+      req.session.user = { id: 'u', discordGuilds: [] };
+      req.session.discordOAuth = {
+        accessToken: 'stale-token',
+        refreshToken: 'refresh-tok',
+        expiresAt: Date.now() - 5 * 60 * 1000,
+        guildPermissionsFetchedAt: Date.now() - 999999,
+      };
+      res.send('ok');
+    });
+
+    server = http.createServer(app);
+    io = new SocketIOServer(server, { cors: { origin: true, credentials: true } });
+    io.engine.use(mid);
+
+    const oauthClient = {
+      async refreshAccessToken() {
+        return { accessToken: 'refreshed-token', refreshToken: 'refresh-tok', expiresIn: 3600 };
+      },
+      async fetchGuilds() {
+        return [{ id: 'g', name: 'G', owner: true, permissions: '0' }];
+      },
+    };
+    const permission = new GuildPermissionService({ oauthClient, ttlSeconds: 600 });
+    const guildAccess = new GuildAccessService({
+      guildGateway: { async listGuilds() { return [{ id: 'g', name: 'G', memberCount: 1 }]; } },
+      permissionService: permission,
+      isDemo: false,
+    });
+    new SocketGateway({ io, eventBus: createEventBus(), guildAccess, logger: silentLogger });
+
+    await new Promise((resolve) => server.listen(0, resolve));
+    baseUrl = `http://localhost:${server.address().port}`;
+
+    const seed = await fetch(`${baseUrl}/seed`);
+    const setCookie = seed.headers.get('set-cookie');
+    assert.ok(setCookie, 'seed route must set a session cookie');
+    const cookie = setCookie.split(';')[0];
+    const sid = decodeURIComponent(cookie).replace(/^sid=s:/, '').split('.')[0];
+
+    const socket = await connect(baseUrl, cookie);
+    const ack = await emitWithAck(socket, 'joinGuild', 'g');
+    assert.strictEqual(ack.success, true);
+
+    // Read the session back from the STORE (not the socket's in-memory object)
+    // — this is exactly what the next request would load.
+    const persisted = await new Promise((resolve, reject) => {
+      store.get(sid, (err, s) => (err ? reject(err) : resolve(s)));
+    });
+    assert.ok(persisted, 'session must exist in the store after joinGuild');
+    assert.strictEqual(persisted.discordOAuth.accessToken, 'refreshed-token', 'refreshed access token must be persisted');
+    assert.ok(persisted.discordOAuth.guildPermissionsFetchedAt > 0, 'refreshed permission timestamp must be persisted');
+    assert.ok(Array.isArray(persisted.user.discordGuilds), 'refreshed guild snapshot must be persisted');
+
+    socket.close();
+  });
+
+  suite.testAsync('joinGuild still works when the session has no save() (plain object)', async () => {
+    // Defensive: a session-like object without express-session's save() must
+    // not break the join path.
+    const store = new sessionMiddleware.MemoryStore();
+    const mid = sessionMiddleware({
+      name: 'sid',
+      secret: 'socket-session-test-secret-2',
+      store,
+      resave: false,
+      saveUninitialized: false,
+    });
+    const app = express();
+    app.use(mid);
+    app.get('/seed', (req, res) => {
+      req.session.user = { id: 'u', discordGuilds: [] };
+      res.send('ok');
+    });
+    server = http.createServer(app);
+    io = new SocketIOServer(server, { cors: { origin: true, credentials: true } });
+    io.engine.use(mid);
+
+    new SocketGateway({
+      io,
+      eventBus: createEventBus(),
+      // Simulate a guildAccess that replaces the session with a plain object.
+      guildAccess: {
+        async canViewGuild(session, guildId) {
+          Object.assign(session, { user: { id: 'u', isDemo: true }, save: undefined });
+          return guildId === 'g';
+        },
+      },
+      logger: silentLogger,
+    });
+
+    await new Promise((resolve) => server.listen(0, resolve));
+    baseUrl = `http://localhost:${server.address().port}`;
+    const seed = await fetch(`${baseUrl}/seed`);
+    const cookie = seed.headers.get('set-cookie').split(';')[0];
+
+    const socket = await connect(baseUrl, cookie);
+    const ack = await emitWithAck(socket, 'joinGuild', 'g');
+    assert.strictEqual(ack.success, true);
+    socket.close();
+  });
+
+  io?.close();
+  server?.close();
+
+  return suite.run();
+}
+
+module.exports = { runSocketTests, runSocketIsolationTests, runSocketSessionPersistenceTests };
 
 if (require.main === module) {
-  Promise.all([runSocketTests(), runSocketIsolationTests()]).then((results) => {
+  Promise.all([runSocketTests(), runSocketIsolationTests(), runSocketSessionPersistenceTests()]).then((results) => {
     const failed = results.reduce((a, b) => a + b, 0);
     if (typeof test !== 'function') process.exit(failed ? 1 : 0);
   });

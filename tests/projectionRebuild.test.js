@@ -300,6 +300,61 @@ async function runProjectionRebuildTests() {
     assert.deepStrictEqual(result.differences, []);
   });
 
+  suite.test('mixed SQLite/ISO timestamps are normalized, not compared lexically', () => {
+    const db = createTestDb();
+    const { invites } = createRepos(db);
+    // ISO-encoded ledger join (start of day, UTC)...
+    invites.trackJoin({ guildId: 'g', userId: 'm', attribution: INVITE('inv'), isFake: false, joinedAt: '2026-01-05T00:00:00.000Z' });
+    // ...and a SQLite-style leave that is AFTER the join in real time. The
+    // space-format value has no zone marker, so any UTC offset shift (this
+    // machine runs UTC+2) must not flip the ordering.
+    db.prepare(`
+      INSERT INTO invite_events (guild_id, user_id, membership_cycle, event_type, attribution_type, inviter_id, invite_code, is_fake, occurred_at)
+      VALUES ('g', 'm', 1, 'LEAVE', 'INVITE', 'inv', 'c', 0, '2026-01-05 23:59:00')
+    `).run();
+    db.prepare("UPDATE invite_members SET is_left = 1, left_at = '2026-01-05 23:59:00' WHERE guild_id='g' AND user_id='m'").run();
+
+    // A lexical comparison of '2026-01-05T00:00:00.000Z' vs '2026-01-05 23:59:00'
+    // would also be fine here, but a numeric comparison must not falsely reject
+    // either; the real guarantee is that rebuild + dry-run agree.
+    const result = invites.rebuildGuildProjections('g');
+    assert.strictEqual(result.members, 1);
+
+    // Dry-run on the rebuilt state reports no spurious differences.
+    const dry = invites.rebuildGuildProjections('g', { dryRun: true });
+    assert.deepStrictEqual(dry.differences, []);
+  });
+
+  suite.test('rebuild still works when already inside a transaction (migration path)', () => {
+    const db = createTestDb();
+    const { invites } = createRepos(db);
+    invites.trackJoin({ guildId: 'g', userId: 'm', attribution: INVITE('inv'), isFake: false, joinedAt: '2026-01-01T10:00:00Z' });
+    db.prepare("UPDATE invite_members SET inviter_id='WRONG' WHERE guild_id='g' AND user_id='m'").run();
+
+    // Wrap like runMigrations does — rebuild must run inside the outer txn.
+    db.transaction(() => {
+      invites.rebuildGuildProjections('g');
+    })();
+
+    const member = invites.getCurrentMember('g', 'm');
+    assert.strictEqual(member.inviter_id, 'inv');
+  });
+
+  suite.test('dry-run reports a joined_at difference', () => {
+    const db = createTestDb();
+    const { invites } = createRepos(db);
+    invites.trackJoin({ guildId: 'g', userId: 'm', attribution: INVITE('inv'), isFake: false, joinedAt: '2026-01-01T10:00:00Z' });
+
+    // Corrupt only the joined_at projection.
+    db.prepare("UPDATE invite_members SET joined_at='2026-02-02T10:00:00Z' WHERE guild_id='g' AND user_id='m'").run();
+
+    const result = invites.rebuildGuildProjections('g', { dryRun: true });
+    assert.ok(
+      result.differences.some((d) => d.table === 'invite_members' && d.reason === 'MEMBER CHANGED'),
+      'joined_at drift must surface as a member difference'
+    );
+  });
+
   return suite.run();
 }
 

@@ -40,7 +40,13 @@ class SafetyService {
     try {
       const rule = await this.gateway.createAutoModRule(guildId, payload);
       if (!rule) throw new NotFoundError('Guild is not available.');
-      this.eventBus.emit(SafetyEvents.AutoModRuleUpdated, { guildId, action: 'create', rule });
+      // Option A (dedup model): Discord gateway AutoModerationRule* events are
+      // the authoritative realtime notification. The service performs the
+      // Discord mutation but does NOT publish AutoModRuleUpdated here — the
+      // resulting Discord event (external or dashboard-initiated) publishes the
+      // one canonical event. In demo mode the demo gateway mirrors this by
+      // publishing after mutation. This guarantees one logical change yields one
+      // dashboard event instead of service + Discord echo duplicates.
       return rule;
     } catch (err) {
       if (err instanceof AppError) throw err;
@@ -53,7 +59,7 @@ class SafetyService {
     try {
       const rule = await this.gateway.editAutoModRule(guildId, ruleId, updates);
       if (!rule) throw new NotFoundError('AutoMod rule not found.');
-      this.eventBus.emit(SafetyEvents.AutoModRuleUpdated, { guildId, action: 'update', rule });
+      // See createRule — no duplicate publish; the Discord echo publishes once.
       return rule;
     } catch (err) {
       if (err instanceof AppError) throw err;
@@ -65,7 +71,7 @@ class SafetyService {
   async deleteRule(guildId, ruleId) {
     try {
       await this.gateway.deleteAutoModRule(guildId, ruleId);
-      this.eventBus.emit(SafetyEvents.AutoModRuleUpdated, { guildId, action: 'delete', ruleId });
+      // See createRule — the Discord delete echo publishes once.
       return { ruleId };
     } catch (err) {
       if (err instanceof AppError) throw err;

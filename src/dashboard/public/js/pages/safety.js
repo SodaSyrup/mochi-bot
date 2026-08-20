@@ -1,5 +1,5 @@
 /**
- * 🍡 Mochi Discord Safety & AutoMod Client Controller
+ * Mochi Discord Safety & AutoMod Client Controller
  */
 
 class SafetyPage {
@@ -22,8 +22,10 @@ class SafetyPage {
     if (window.Mochi) {
       window.Mochi.onGuildChange(() => this.refreshAll());
       window.Mochi.onRealtime('autoModExecution', (data) => this.handleAutoModExecution(data));
-      window.Mochi.onRealtime('autoModRuleUpdated', (data) => this.handleRuleUpdated(data));
+      window.Mochi.onRealtime('autoModRuleUpdated', () => this.loadRules(this.getGuildId()));
     }
+
+    window.addEventListener('mochi:close-modals', () => this.closeRuleModal());
 
     await this.refreshAll();
   }
@@ -34,6 +36,7 @@ class SafetyPage {
 
   async refreshAll() {
     const guildId = this.getGuildId();
+    if (!guildId) return;
     await Promise.all([
       this.loadSafetySettings(guildId),
       this.loadChannels(guildId),
@@ -55,20 +58,20 @@ class SafetyPage {
   renderSafetySettings(safety) {
     if (!safety) return;
 
-    // Stat cards
-    const verLevels = ['None', 'Low (Email)', 'Medium (5m)', 'High (10m)', 'Highest (Phone)'];
-    const explicitLevels = ["Don't Scan", 'No Roles Only', 'All Members'];
+    const verLevels = ['None', 'Low', 'Medium', 'High', 'Highest'];
+    const explicitLevels = ["Don't scan", 'Members without roles', 'All members'];
+
+    const totalEl = document.getElementById('stat-total-rules');
+    if (totalEl) totalEl.textContent = safety.rulesCount ?? 0;
+
+    const activeEl = document.getElementById('stat-active-rules');
+    if (activeEl) activeEl.textContent = `${safety.enabledRulesCount ?? 0} active`;
 
     const verEl = document.getElementById('stat-verification-text');
-    if (verEl) verEl.textContent = verLevels[safety.verificationLevel] || 'Low (Email)';
+    if (verEl) verEl.textContent = verLevels[safety.verificationLevel] || 'Low';
 
     const expEl = document.getElementById('stat-explicit-text');
-    if (expEl) expEl.textContent = explicitLevels[safety.explicitContentFilter] || 'No Roles Only';
-
-    const sourceEl = document.getElementById('stat-source-truth');
-    if (sourceEl) {
-      sourceEl.textContent = safety.isSimulated ? 'Source: Sandbox Simulator' : 'Source: Discord Gateway';
-    }
+    if (expEl) expEl.textContent = explicitLevels[safety.explicitContentFilter] || 'Members without roles';
 
     // Form inputs
     const setVer = document.getElementById('setting-verification-level');
@@ -85,7 +88,10 @@ class SafetyPage {
     if (e) e.preventDefault();
     const guildId = this.getGuildId();
     const btn = document.getElementById('btn-save-safety');
-    if (btn) btn.disabled = true;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+    }
 
     try {
       const verificationLevel = parseInt(document.getElementById('setting-verification-level').value, 10);
@@ -106,15 +112,18 @@ class SafetyPage {
       this.renderSafetySettings(data.safety);
 
       if (window.Mochi) {
-        window.Mochi.showToast('🛡️ Discord server security settings updated successfully!', 'success');
+        window.Mochi.showToast('Server settings updated.', 'success');
       }
     } catch (err) {
       console.error('[Safety] Error saving settings:', err);
       if (window.Mochi) {
-        window.Mochi.showToast('❌ Failed to update settings on Discord.', 'leave');
+        window.Mochi.showToast('Could not update server settings.', 'leave');
       }
     } finally {
-      if (btn) btn.disabled = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Save changes';
+      }
     }
   }
 
@@ -135,12 +144,12 @@ class SafetyPage {
 
     if (safetyChannelSelect) {
       const currentVal = this.safetySettings?.safetyAlertsChannelId || '';
-      safetyChannelSelect.innerHTML = '<option value="">No Safety Channel Selected</option>' +
+      safetyChannelSelect.innerHTML = '<option value="">No safety channel selected</option>' +
         this.channels.map(c => `<option value="${escapeHtml(c.id)}" ${c.id === currentVal ? 'selected' : ''}>#${escapeHtml(c.name)}</option>`).join('');
     }
 
     if (alertChannelSelect) {
-      alertChannelSelect.innerHTML = '<option value="">Select alert channel...</option>' +
+      alertChannelSelect.innerHTML = '<option value="">Select channel…</option>' +
         this.channels.map(c => `<option value="${escapeHtml(c.id)}">#${escapeHtml(c.name)}</option>`).join('');
     }
 
@@ -167,6 +176,7 @@ class SafetyPage {
   }
 
   async loadRules(guildId) {
+    if (!guildId) return;
     const container = document.getElementById('automod-rules-container');
     try {
       const data = await apiFetch(`/api/guilds/${guildId}/safety/automod`);
@@ -176,7 +186,7 @@ class SafetyPage {
     } catch (err) {
       console.error('[Safety] Error loading AutoMod rules:', err);
       if (container) {
-        container.innerHTML = `<div class="error-msg" style="padding: 24px; text-align: center; color: var(--accent-pink);"><i class="fa-solid fa-triangle-exclamation"></i> Error loading rules from Discord.</div>`;
+        container.innerHTML = `<div class="empty-state">Could not load AutoMod rules.</div>`;
       }
     }
   }
@@ -189,7 +199,7 @@ class SafetyPage {
     if (totalEl) totalEl.textContent = total;
 
     const activeEl = document.getElementById('stat-active-rules');
-    if (activeEl) activeEl.textContent = `${active} active on server`;
+    if (activeEl) activeEl.textContent = `${active} active`;
 
     const countAll = document.getElementById('count-filter-all');
     if (countAll) countAll.textContent = total;
@@ -209,9 +219,20 @@ class SafetyPage {
 
   filterRules(type, btn) {
     this.currentFilter = type;
-    document.querySelectorAll('.rules-filter-bar .filter-chip').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('#rules-filter-bar .seg-btn').forEach(c => c.classList.remove('active'));
     if (btn) btn.classList.add('active');
     this.renderRules();
+  }
+
+  triggerLabel(type) {
+    const labels = {
+      1: 'Keywords',
+      3: 'Spam',
+      4: 'Presets',
+      5: 'Mentions',
+      6: 'Member profile'
+    };
+    return labels[type] || 'Custom';
   }
 
   renderRules() {
@@ -231,104 +252,55 @@ class SafetyPage {
 
     if (filtered.length === 0) {
       container.innerHTML = `
-        <div class="empty-rules-state" style="text-align: center; padding: 48px 24px; grid-column: 1 / -1;">
-          <div style="font-size: 40px; margin-bottom: 12px;">🛡️</div>
-          <h4 style="font-size: 16px; font-weight: 600; color: var(--text-normal);">No AutoMod Rules Found</h4>
-          <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">No rules match the selected filter. Click "Create AutoMod Rule" to add one.</p>
-        </div>
-      `;
+        <div class="empty-state">
+          <div class="empty-title">No AutoMod rules match this filter.</div>
+          <div class="empty-hint">Click "Create AutoMod rule" to add one.</div>
+        </div>`;
       return;
     }
 
-    const triggerLabels = {
-      1: { name: 'Keyword / URL', icon: 'fa-font', color: '#38bdf8' },
-      3: { name: 'Discord Spam ML', icon: 'fa-envelope-open-text', color: '#f59e0b' },
-      4: { name: 'Preset Words', icon: 'fa-shield-halved', color: '#a855f7' },
-      5: { name: 'Mention Spam', icon: 'fa-at', color: '#ec4899' },
-      6: { name: 'Member Profile', icon: 'fa-id-badge', color: '#10b981' }
-    };
-
     container.innerHTML = filtered.map(rule => {
-      const trigger = triggerLabels[rule.triggerType] || { name: 'Custom Trigger', icon: 'fa-gear', color: '#94a3b8' };
       const actionsList = rule.actions || [];
       const hasBlock = actionsList.some(a => a.type === 1);
       const hasAlert = actionsList.some(a => a.type === 2);
       const hasTimeout = actionsList.some(a => a.type === 3);
       const hasBlockProfile = actionsList.some(a => a.type === 4);
 
-      let triggerDetailsHtml = '';
-      if (rule.triggerType === 1 || rule.triggerType === 6) {
-        const keywords = rule.triggerMetadata?.keywordFilter || [];
-        const regexes = rule.triggerMetadata?.regexPatterns || [];
-        triggerDetailsHtml = `
-          <div class="rule-trigger-details">
-            ${keywords.slice(0, 4).map(k => `<span class="tag-keyword"><code>${this.escapeHtml(k)}</code></span>`).join(' ')}
-            ${keywords.length > 4 ? `<span class="tag-more">+${keywords.length - 4} more</span>` : ''}
-            ${regexes.length > 0 ? `<span class="tag-regex"><i class="fa-solid fa-code"></i> ${regexes.length} Regex</span>` : ''}
-          </div>
-        `;
-      } else if (rule.triggerType === 4) {
-        const presets = rule.triggerMetadata?.presets || [];
-        const presetNames = { 1: 'Profanity', 2: 'Sexual Content', 3: 'Slurs & Hate' };
-        triggerDetailsHtml = `
-          <div class="rule-trigger-details">
-            ${presets.map(p => `<span class="tag-preset">${presetNames[p] || 'Preset ' + p}</span>`).join(' ')}
-          </div>
-        `;
-      } else if (rule.triggerType === 5) {
-        triggerDetailsHtml = `
-          <div class="rule-trigger-details">
-            <span class="tag-mention"><i class="fa-solid fa-triangle-exclamation"></i> Limit: &gt; ${rule.triggerMetadata?.mentionTotalLimit || 5} Mentions</span>
-          </div>
-        `;
-      } else if (rule.triggerType === 3) {
-        triggerDetailsHtml = `
-          <div class="rule-trigger-details">
-            <span class="tag-spam"><i class="fa-solid fa-robot"></i> Discord Automated Spam Detector</span>
-          </div>
-        `;
-      }
+      const actionLabels = [];
+      if (hasBlock) actionLabels.push('Block message');
+      if (hasAlert) actionLabels.push('Alert');
+      if (hasTimeout) actionLabels.push('Timeout');
+      if (hasBlockProfile) actionLabels.push('Block update');
+      const actionsText = actionLabels.length > 0 ? actionLabels.join(' · ') : 'No actions';
+
+      const exemptCount = `${(rule.exemptRoles || []).length} roles · ${(rule.exemptChannels || []).length} channels`;
 
       const safeRuleId = escapeHtml(rule.id);
       return `
-        <div class="automod-card ${rule.enabled ? 'enabled' : 'disabled'}" id="rule-card-${safeRuleId}">
-          <div class="automod-card-header">
-            <div class="automod-title-block">
-              <span class="trigger-type-badge" style="background: ${trigger.color}15; color: ${trigger.color}; border: 1px solid ${trigger.color}40;">
-                <i class="fa-solid ${trigger.icon}"></i> ${escapeHtml(trigger.name)}
-              </span>
-              <h4 class="automod-rule-name">${this.escapeHtml(rule.name)}</h4>
-            </div>
-
-            <!-- Toggle Switch -->
+        <div class="rule-row ${rule.enabled ? 'enabled' : 'disabled'}" id="rule-row-${safeRuleId}">
+          <div class="rule-toggle">
             <label class="switch-toggle" title="${rule.enabled ? 'Click to disable' : 'Click to enable'}">
-              <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="safetyPage.toggleRuleState('${safeRuleId}', this.checked)">
+              <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="safetyPage.toggleRuleState('${safeRuleId}', this.checked)" aria-label="Toggle rule">
               <span class="slider"></span>
             </label>
           </div>
-
-          ${triggerDetailsHtml}
-
-          <!-- Actions Taken -->
-          <div class="rule-actions-row">
-            <span class="actions-label">Actions:</span>
-            ${hasBlock ? '<span class="action-pill action-block"><i class="fa-solid fa-ban"></i> Block Message</span>' : ''}
-            ${hasAlert ? '<span class="action-pill action-alert"><i class="fa-solid fa-bell"></i> Send Alert</span>' : ''}
-            ${hasTimeout ? '<span class="action-pill action-timeout"><i class="fa-solid fa-clock"></i> Timeout</span>' : ''}
-            ${hasBlockProfile ? '<span class="action-pill action-block"><i class="fa-solid fa-user-slash"></i> Block Update</span>' : ''}
+          <div class="rule-main">
+            <div>
+              <div class="rule-name">${this.escapeHtml(rule.name)}</div>
+              <div class="rule-trigger">${this.escapeHtml(this.triggerLabel(rule.triggerType))}</div>
+            </div>
+            <div class="rule-meta">
+              <span>${actionsText}</span>
+              <span>${exemptCount} exempt</span>
+            </div>
           </div>
-
-          <!-- Exemptions Footer -->
-          <div class="automod-card-footer">
-            <div class="exemptions-summary">
-              <span><i class="fa-solid fa-user-shield"></i> ${(rule.exemptRoles || []).length} Roles</span>
-              <span><i class="fa-solid fa-hashtag"></i> ${(rule.exemptChannels || []).length} Channels</span>
-            </div>
-
-            <div class="rule-btn-actions">
-              <button class="btn-icon" title="Edit Rule" onclick="safetyPage.openEditModal('${safeRuleId}')"><i class="fa-solid fa-pen-to-square"></i></button>
-              <button class="btn-icon delete" title="Delete Rule from Discord" onclick="safetyPage.deleteRule('${safeRuleId}')"><i class="fa-solid fa-trash-can"></i></button>
-            </div>
+          <div class="rule-actions">
+            <button class="button-icon" title="Edit rule" aria-label="Edit rule" onclick="safetyPage.openEditModal('${safeRuleId}')">
+              <i class="fa-solid fa-pen" aria-hidden="true"></i>
+            </button>
+            <button class="button-icon danger" title="Delete rule" aria-label="Delete rule" onclick="safetyPage.deleteRule('${safeRuleId}')">
+              <i class="fa-solid fa-trash" aria-hidden="true"></i>
+            </button>
           </div>
         </div>
       `;
@@ -342,31 +314,26 @@ class SafetyPage {
         method: 'PATCH',
         body: { enabled }
       });
-      
+
       const idx = this.rules.findIndex(r => r.id === ruleId);
       if (idx !== -1) {
         this.rules[idx] = data.rule;
       }
       this.updateRuleCounts();
 
-      const card = document.getElementById(`rule-card-${ruleId}`);
-      if (card) {
-        if (enabled) {
-          card.classList.remove('disabled');
-          card.classList.add('enabled');
-        } else {
-          card.classList.remove('enabled');
-          card.classList.add('disabled');
-        }
+      const row = document.getElementById(`rule-row-${ruleId}`);
+      if (row) {
+        row.classList.toggle('disabled', !enabled);
+        row.classList.toggle('enabled', enabled);
       }
 
       if (window.Mochi) {
-        window.Mochi.showToast(enabled ? '🛡️ AutoMod rule enabled on Discord!' : '⚠️ AutoMod rule disabled on Discord.', enabled ? 'join' : 'leave');
+        window.Mochi.showToast(enabled ? 'Rule enabled.' : 'Rule disabled.', enabled ? 'success' : 'leave');
       }
     } catch (err) {
       console.error('[Safety] Error toggling rule state:', err);
       if (window.Mochi) {
-        window.Mochi.showToast('❌ Failed to toggle rule state on Discord.', 'leave');
+        window.Mochi.showToast('Could not toggle rule state.', 'leave');
       }
       await this.loadRules(guildId);
     }
@@ -376,7 +343,7 @@ class SafetyPage {
     const rule = this.rules.find(r => r.id === ruleId);
     const ruleName = rule ? rule.name : 'this rule';
 
-    if (!confirm(`Are you sure you want to permanently delete "${ruleName}" from Discord?`)) {
+    if (!confirm(`Delete "${ruleName}" from Discord? This cannot be undone.`)) {
       return;
     }
 
@@ -388,19 +355,19 @@ class SafetyPage {
       this.renderRules();
 
       if (window.Mochi) {
-        window.Mochi.showToast(`🗑️ Rule "${ruleName}" deleted from Discord.`, 'leave');
+        window.Mochi.showToast('Rule deleted.', 'leave');
       }
     } catch (err) {
       console.error('[Safety] Error deleting rule:', err);
       if (window.Mochi) {
-        window.Mochi.showToast('❌ Failed to delete rule from Discord.', 'leave');
+        window.Mochi.showToast('Could not delete rule.', 'leave');
       }
     }
   }
 
   openCreateModal() {
     document.getElementById('rule-edit-id').value = '';
-    document.getElementById('rule-modal-title').innerHTML = '<i class="fa-solid fa-shield-plus" style="color: var(--accent-pink);"></i> Create AutoMod Rule';
+    document.getElementById('rule-modal-title').textContent = 'Create AutoMod rule';
     document.getElementById('rule-name').value = '';
     document.getElementById('rule-trigger-type').value = '1';
     this.onTriggerTypeChange('1');
@@ -433,6 +400,7 @@ class SafetyPage {
     if (exemptChannels) Array.from(exemptChannels.options).forEach(o => o.selected = false);
 
     document.getElementById('rule-modal').classList.add('active');
+    document.getElementById('rule-name').focus();
   }
 
   openEditModal(ruleId) {
@@ -440,7 +408,7 @@ class SafetyPage {
     if (!rule) return;
 
     document.getElementById('rule-edit-id').value = rule.id;
-    document.getElementById('rule-modal-title').innerHTML = `<i class="fa-solid fa-pen-to-square" style="color: var(--accent-purple);"></i> Edit AutoMod Rule`;
+    document.getElementById('rule-modal-title').textContent = 'Edit AutoMod rule';
     document.getElementById('rule-name').value = rule.name;
     document.getElementById('rule-trigger-type').value = rule.triggerType;
     this.onTriggerTypeChange(rule.triggerType);
@@ -500,6 +468,7 @@ class SafetyPage {
     }
 
     document.getElementById('rule-modal').classList.add('active');
+    document.getElementById('rule-name').focus();
   }
 
   closeRuleModal() {
@@ -538,7 +507,10 @@ class SafetyPage {
     const editId = document.getElementById('rule-edit-id').value;
     const isEdit = Boolean(editId);
     const btn = document.getElementById('btn-save-rule');
-    if (btn) btn.disabled = true;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+    }
 
     try {
       const name = document.getElementById('rule-name').value.trim();
@@ -629,15 +601,18 @@ class SafetyPage {
       this.renderRules();
 
       if (window.Mochi) {
-        window.Mochi.showToast(isEdit ? `✨ AutoMod rule "${name}" updated on Discord!` : `🎉 AutoMod rule "${name}" created on Discord!`, 'success');
+        window.Mochi.showToast(isEdit ? 'Rule updated.' : 'Rule created.', 'success');
       }
     } catch (err) {
       console.error('[Safety] Error saving rule:', err);
       if (window.Mochi) {
-        window.Mochi.showToast(`❌ Error: ${err.message}`, 'leave');
+        window.Mochi.showToast(`Could not save rule: ${err.message}`, 'leave');
       }
     } finally {
-      if (btn) btn.disabled = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Save rule';
+      }
     }
   }
 
@@ -647,23 +622,15 @@ class SafetyPage {
     if (this.incidents.length > 20) this.incidents.pop();
     this.renderIncidentFeed();
 
-    const actionText = (data.action?.type === 3) ? 'Timed Out (Mute)' : (data.action?.type === 2 ? 'Alerted' : 'Blocked Message');
+    const actionText = (data.action?.type === 3) ? 'Timed out' : (data.action?.type === 2 ? 'Alerted' : 'Blocked message');
     if (window.Mochi) {
       const parts = [
-        { b: 'AutoMod Interception: ' },
-        { text: 'User ' },
-        { code: data.user?.username || data.userId || 'Unknown' },
-        { text: ` triggered ${data.ruleName || 'AutoMod Rule'} in #${data.channelName || 'chat'}. Action: ` },
+        { b: 'AutoMod: ' },
+        { text: `${data.user?.username || data.userId || 'Unknown'} triggered ${data.ruleName || 'AutoMod rule'} in #${data.channelName || 'chat'}. Action: ` },
         { b: actionText }
       ];
       window.Mochi.showToast(parts, 'leave');
     }
-  }
-
-  handleRuleUpdated(data) {
-    console.log('[Safety] AutoMod rule updated remotely:', data);
-    const guildId = this.getGuildId();
-    this.loadRules(guildId);
   }
 
   renderIncidentFeed() {
@@ -672,12 +639,10 @@ class SafetyPage {
 
     if (this.incidents.length === 0) {
       container.innerHTML = `
-        <div class="feed-empty-state" id="feed-empty-msg">
-          <i class="fa-solid fa-shield-check" style="font-size: 32px; color: var(--accent-emerald); margin-bottom: 8px;"></i>
-          <div>All systems secure. No recent infractions recorded.</div>
-          <div style="font-size: 12px; color: var(--text-dim); margin-top: 4px;">Click "Test Trigger" to test a live violation.</div>
-        </div>
-      `;
+        <div class="empty-state" id="feed-empty-msg">
+          <div class="empty-title">No recent AutoMod actions.</div>
+          <div class="empty-hint">New AutoMod actions will appear here.</div>
+        </div>`;
       return;
     }
 
@@ -685,33 +650,29 @@ class SafetyPage {
       const timeStr = new Date(inc.executedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const actionType = inc.action?.type || 1;
       const actionLabels = {
-        1: { name: 'Blocked', color: '#f43f5e', icon: 'fa-ban' },
-        2: { name: 'Alerted', color: '#f59e0b', icon: 'fa-bell' },
-        3: { name: `Timed Out (${inc.action?.metadata?.durationSeconds ? inc.action.metadata.durationSeconds + 's' : '5m'})`, color: '#ec4899', icon: 'fa-clock' },
-        4: { name: 'Profile Blocked', color: '#8b5cf6', icon: 'fa-user-slash' }
+        1: 'Blocked',
+        2: 'Alerted',
+        3: 'Timed out',
+        4: 'Profile blocked'
       };
-      const act = actionLabels[actionType] || actionLabels[1];
+      const actionName = actionLabels[actionType] || 'Blocked';
 
       return `
-        <div class="incident-item">
-          <div class="incident-avatar">
-            <img src="${this.escapeHtml(inc.user?.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png')}" alt="Avatar">
+        <div class="activity-row">
+          <div class="activity-row-avatar">
+            <img src="${this.escapeHtml(inc.user?.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png')}" alt="">
           </div>
-          <div class="incident-details">
-            <div class="incident-header">
-              <span class="incident-user">${this.escapeHtml(inc.user?.username || 'Unknown User')}</span>
-              <span class="incident-channel">#${this.escapeHtml(inc.channelName || 'general')}</span>
-              <span class="incident-time">${timeStr}</span>
+          <div class="activity-row-body">
+            <div class="activity-row-head">
+              <span class="activity-row-user">${this.escapeHtml(inc.user?.username || 'Unknown user')}</span>
+              <span class="channel-name">#${this.escapeHtml(inc.channelName || 'general')}</span>
+              <span class="badge badge-warning">${actionName}</span>
+              <span class="activity-row-time">${timeStr}</span>
             </div>
-            <div class="incident-content">
-              "${this.escapeHtml(inc.content || 'Offensive content')}"
-            </div>
-            <div class="incident-meta">
-              <span class="incident-tag" style="background: ${act.color}20; color: ${act.color};">
-                <i class="fa-solid ${act.icon}"></i> ${act.name}
-              </span>
-              ${inc.matchedKeyword ? `<span class="incident-matched">Matched: <code>${this.escapeHtml(inc.matchedKeyword)}</code></span>` : ''}
-              <span class="incident-rule">${this.escapeHtml(inc.ruleName || 'AutoMod')}</span>
+            <div class="activity-row-content">"${this.escapeHtml(inc.content || 'Offensive content')}"</div>
+            <div class="activity-row-meta">
+              ${inc.matchedKeyword ? `<span>Matched: <code>${this.escapeHtml(inc.matchedKeyword)}</code></span>` : ''}
+              <span>Rule: ${this.escapeHtml(inc.ruleName || 'AutoMod')}</span>
             </div>
           </div>
         </div>
@@ -723,14 +684,14 @@ class SafetyPage {
     const guildId = this.getGuildId();
     const testOffenses = [
       {
-        ruleName: '🛡️ Block Scam Links & Malicious URLs',
+        ruleName: 'Block scam links',
         triggerType: 1,
         content: 'Claim Free Discord Nitro 1-Year gift at https://discord-nitro-event.ru/claim!',
         matchedKeyword: 'discord-nitro-event.ru',
         actionType: 1
       },
       {
-        ruleName: '🚫 Anti-Spam & Severe Profanity Filter',
+        ruleName: 'Profanity filter',
         triggerType: 4,
         content: 'Profanity test violation against server safety policy.',
         matchedKeyword: 'inappropriate words',
@@ -738,7 +699,7 @@ class SafetyPage {
         timeoutSeconds: 300
       },
       {
-        ruleName: '⚡ Anti-Mention Raid Protection (Limit 5)',
+        ruleName: 'Mention raid protection',
         triggerType: 5,
         content: '@user1 @user2 @user3 @user4 @user5 @user6 check this out guys!!',
         matchedKeyword: '> 5 mentions',

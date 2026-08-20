@@ -3,6 +3,7 @@ const { runMigrations } = require('../database/migrations');
 const { createEventBus } = require('./eventBus');
 const { createLogger } = require('./logger');
 const { createServices } = require('./createServices');
+const { resolveDatabasePath } = require('../config');
 const DashboardServer = require('../dashboard/server');
 
 /**
@@ -17,7 +18,7 @@ async function createApplication({ config, client = null, overrides = {} } = {})
   const eventBus = overrides.eventBus || createEventBus();
   const resolvedClient = overrides.client ?? client;
 
-  const dbPath = config.app.isDemo ? config.database.demoPath : config.database.path;
+  const dbPath = resolveDatabasePath(config);
   const db = overrides.db || createDatabase({ path: dbPath });
   if (!overrides.skipMigrations) {
     runMigrations(db);

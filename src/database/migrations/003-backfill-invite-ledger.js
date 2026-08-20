@@ -136,10 +136,13 @@ module.exports = {
         captured_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    // NOTE: explicit parentheses around the non-zero predicate. SQL precedence
+    // would otherwise bind `AND NOT EXISTS` only to the last `fake != 0` term,
+    // so an already-archived row with only fake != 0 would be re-archived.
     const archiveInsert = db.prepare(`
       INSERT INTO legacy_inviter_stats_snapshot (guild_id, user_id, regular, bonus, leaves, fake)
       SELECT guild_id, user_id, regular, bonus, leaves, fake FROM inviters
-      WHERE regular != 0 OR bonus != 0 OR leaves != 0 OR fake != 0
+      WHERE (regular != 0 OR bonus != 0 OR leaves != 0 OR fake != 0)
         AND NOT EXISTS (
           SELECT 1 FROM legacy_inviter_stats_snapshot s
           WHERE s.guild_id = inviters.guild_id AND s.user_id = inviters.user_id
@@ -149,11 +152,39 @@ module.exports = {
     `);
     const archivedCount = archiveInsert.run().changes;
 
+    // The old DAILY statistics can contain history that the synthetic lifecycle
+    // ledger cannot reconstruct, so archive them BEFORE the rebuild replaces
+    // daily_invite_stats. Same explicit-parenthesis discipline applies.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS legacy_daily_invite_stats_snapshot (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        joins INTEGER NOT NULL,
+        leaves INTEGER NOT NULL,
+        fakes INTEGER NOT NULL,
+        captured_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    const archiveDailyInsert = db.prepare(`
+      INSERT INTO legacy_daily_invite_stats_snapshot (guild_id, date, joins, leaves, fakes)
+      SELECT guild_id, date, joins, leaves, fakes FROM daily_invite_stats
+      WHERE NOT EXISTS (
+        SELECT 1 FROM legacy_daily_invite_stats_snapshot s
+        WHERE s.guild_id = daily_invite_stats.guild_id
+          AND s.date = daily_invite_stats.date
+          AND s.joins = daily_invite_stats.joins
+          AND s.leaves = daily_invite_stats.leaves
+          AND s.fakes = daily_invite_stats.fakes
+      )
+    `);
+    const archivedDailyCount = archiveDailyInsert.run().changes;
+
     // Capture old counters for reconciliation before rebuilding from the ledger.
     const oldCounters = db
       .prepare(`
         SELECT guild_id, user_id, regular, bonus, leaves, fake
-        FROM inviters WHERE regular != 0 OR bonus != 0 OR leaves != 0 OR fake != 0
+        FROM inviters WHERE (regular != 0 OR bonus != 0 OR leaves != 0 OR fake != 0)
       `)
       .all();
     const oldByKey = new Map(oldCounters.map((r) => [`${r.guild_id}:${r.user_id}`, r]));
@@ -168,7 +199,7 @@ module.exports = {
     const newCounters = db
       .prepare(`
         SELECT guild_id, user_id, regular, bonus, leaves, fake
-        FROM inviters WHERE regular != 0 OR bonus != 0 OR leaves != 0 OR fake != 0
+        FROM inviters WHERE (regular != 0 OR bonus != 0 OR leaves != 0 OR fake != 0)
       `)
       .all();
     const newByKey = new Map(newCounters.map((r) => [`${r.guild_id}:${r.user_id}`, r]));
@@ -203,7 +234,8 @@ module.exports = {
 
     console.log(
       `[Database] Migration 3 backfill: imported ${joinEvents} join histories, ${leaveEvents} leave histories, ` +
-      `${importedBonuses} bonus adjustments, rebuilt ${rebuiltGuilds} guilds, archived ${archivedCount} legacy inviter snapshot row(s).`
+      `${importedBonuses} bonus adjustments, rebuilt ${rebuiltGuilds} guilds, archived ${archivedCount} legacy inviter snapshot row(s), ` +
+      `${archivedDailyCount} legacy daily snapshot row(s).`
     );
 
     if (differences.length > 0) {

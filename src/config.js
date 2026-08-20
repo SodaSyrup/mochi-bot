@@ -23,6 +23,18 @@ function resolveAppMode(env = process.env) {
   return explicit || 'development';
 }
 
+/**
+ * Single source of truth for the database file path.
+ *
+ * demo mode uses the demo database; every other mode uses the configured
+ * normal database. Application composition and maintenance tooling (e.g. the
+ * projection rebuild CLI) MUST call this helper instead of re-deriving the
+ * demo-vs-normal path themselves, so they can never select a different file.
+ */
+function resolveDatabasePath(config) {
+  return config.app.isDemo ? config.database.demoPath : config.database.path;
+}
+
 function buildConfig(env = process.env) {
   const mode = resolveAppMode(env);
   if (!APP_MODES.includes(mode)) {
@@ -136,3 +148,4 @@ function buildConfig(env = process.env) {
 
 module.exports = buildConfig();
 module.exports.buildConfig = buildConfig;
+module.exports.resolveDatabasePath = resolveDatabasePath;

@@ -117,6 +117,20 @@ CREATE TABLE legacy_inviter_stats_snapshot (
     captured_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Operational archive of the pre-ledger daily statistics, captured by migration
+-- 003 before the rebuild replaces daily_invite_stats (migration 004 backfills it
+-- for databases that migrated before the archive existed). Preserves old daily
+-- history the synthetic lifecycle ledger cannot reconstruct. Not used at runtime.
+CREATE TABLE legacy_daily_invite_stats_snapshot (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    date TEXT NOT NULL,
+    joins INTEGER NOT NULL,
+    leaves INTEGER NOT NULL,
+    fakes INTEGER NOT NULL,
+    captured_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Single definition of net invites: total = regular + bonus - leaves - fake.
 CREATE VIEW inviter_stats AS
 SELECT

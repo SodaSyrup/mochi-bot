@@ -1,5 +1,10 @@
 /**
- * 🍡 Mochi Multi-Page Dashboard - Shared Client Library
+ * 🍡 Mochi Dashboard — Shared client library.
+ *
+ * Centralizes the API client, guild selection/persistence, Socket.IO realtime
+ * subscriptions, safe toasts, and connection status. The application shell
+ * (sidebar/topbar/navigation) lives in layout.js — nothing here builds markup
+ * for it.
  */
 
 /**
@@ -41,6 +46,16 @@ async function apiFetch(url, options = {}) {
   return data;
 }
 
+/**
+ * Map bot telemetry to a semantic status. Colors belong to CSS via
+ * `data-status`; this function returns only the semantic state and plain text.
+ */
+function resolveBotStatus({ connected = false, demoMode = false, tag = '' } = {}) {
+  if (connected) return { status: 'connected', text: `Connected · ${tag}` };
+  if (demoMode) return { status: 'demo', text: 'Demo mode' };
+  return { status: 'disconnected', text: 'Disconnected' };
+}
+
 class MochiSharedCore {
   constructor() {
     this.currentGuildId = null;
@@ -67,7 +82,6 @@ class MochiSharedCore {
 
   async init() {
     this.extractGuildFromUrlOrStorage();
-    this.setupNavigationLinks();
     this.setupSocket();
     this.setupGuildSelect();
     await this.fetchUser();
@@ -93,25 +107,6 @@ class MochiSharedCore {
   }
 
   /**
-   * Keep ?guild= query parameter intact when clicking sidebar nav links
-   */
-  setupNavigationLinks() {
-    document.querySelectorAll('.sidebar-nav .nav-item').forEach(link => {
-      link.addEventListener('click', (e) => {
-        const href = link.getAttribute('href');
-        if (href && !href.startsWith('#') && !href.startsWith('http')) {
-          if (this.currentGuildId) {
-            e.preventDefault();
-            const url = new URL(href, window.location.origin);
-            url.searchParams.set('guild', this.currentGuildId);
-            window.location.href = url.pathname + url.search;
-          }
-        }
-      });
-    });
-  }
-
-  /**
    * Initialize Socket.io connection and real-time listeners
    */
   setupSocket() {
@@ -120,7 +115,6 @@ class MochiSharedCore {
     this.socket = io();
 
     this.socket.on('connect', () => {
-      console.log('[WebSocket] Connected to Mochi Gateway');
       if (this.currentGuildId) {
         this.socket.emit('joinGuild', this.currentGuildId, (response) => {
           if (response && !response.success) {
@@ -131,16 +125,15 @@ class MochiSharedCore {
     });
 
     this.socket.on('memberJoin', (data) => {
-      console.log('[WebSocket] Live Member Join:', data);
       const inviterText = data.isFake
-        ? { text: ' (Suspicious)' }
-        : { text: ` (Invited by ${data.inviter?.username || 'Vanity/Unknown'})` };
+        ? ' (Suspicious)'
+        : ` (Invited by ${data.inviter?.username || 'Vanity/Unknown'})`;
       const parts = [
         { b: data.member?.username || 'Unknown' },
         { text: ' joined using ' },
         { code: data.attribution?.inviteCode || data.attribution?.inviterId || 'N/A' },
         data.attribution?.type === 'VANITY' ? { text: ' (Vanity URL)' } : null,
-        inviterText
+        { text: inviterText }
       ].filter(Boolean);
       this.showToast(parts, data.isFake ? 'leave' : 'join');
       this.fetchStats();
@@ -148,38 +141,32 @@ class MochiSharedCore {
     });
 
     this.socket.on('memberLeave', (data) => {
-      console.log('[WebSocket] Live Member Leave:', data);
       this.showToast([{ b: data.member?.username || 'Unknown' }, { text: ' left the server.' }], 'leave');
       this.fetchStats();
       this.triggerRealtime('memberLeave', data);
     });
 
     this.socket.on('inviteCreated', (data) => {
-      console.log('[WebSocket] New Invite Created:', data);
       const invite = data.invite || {};
       const parts = [{ text: 'New invite created: ' }, { code: invite.code || '' }];
-      if (invite.label) parts.push({ text: ' (🏷️ ' + invite.label + ')' });
+      if (invite.label) parts.push({ text: ` (${invite.label})` });
       this.showToast(parts, 'success');
       this.triggerRealtime('inviteCreated', data);
     });
 
     this.socket.on('inviteLabelUpdated', (payload) => {
-      console.log('[WebSocket] Invite Label Updated:', payload);
       this.triggerRealtime('inviteLabelUpdated', payload);
     });
 
     this.socket.on('inviteDeleted', (payload) => {
-      console.log('[WebSocket] Invite Deleted:', payload);
       this.triggerRealtime('inviteDeleted', payload);
     });
 
     this.socket.on('autoModExecution', (data) => {
-      console.log('[WebSocket] AutoMod Action Executed:', data);
       this.triggerRealtime('autoModExecution', data);
     });
 
     this.socket.on('autoModRuleUpdated', (payload) => {
-      console.log('[WebSocket] AutoMod Rule Updated:', payload);
       this.triggerRealtime('autoModRuleUpdated', payload);
     });
   }
@@ -273,22 +260,16 @@ class MochiSharedCore {
   }
 
   /**
-   * Fetch authenticated user details
+   * Fetch authenticated user details and render into the shared topbar.
    */
   async fetchUser() {
     try {
       const data = await apiFetch('/auth/user');
-      if (data.authenticated && data.user) {
-        const nameEl = document.getElementById('user-name');
-        const avatarEl = document.getElementById('user-avatar');
-        const roleEl = document.getElementById('user-role');
-        if (nameEl) nameEl.textContent = data.user.username;
-        if (avatarEl) avatarEl.src = data.user.avatar;
-        if (roleEl) {
-          roleEl.textContent = data.user.isDemo
-            ? 'Admin (Demo Sandbox)'
-            : (data.user.isDev ? 'Development Admin' : 'Discord Authenticated');
-        }
+      if (data.authenticated && data.user && window.MochiLayout) {
+        window.MochiLayout.setUser({
+          username: data.user.username,
+          avatar: data.user.avatar,
+        });
       }
     } catch (e) {
       console.error('Error fetching user:', e);
@@ -296,52 +277,50 @@ class MochiSharedCore {
   }
 
   /**
-   * Fetch global bot telemetry
+   * Fetch bot connection state and render semantic status. Colors are applied
+   * by CSS from data-status, never from JavaScript color strings.
    */
   async fetchStats() {
     try {
       const data = await apiFetch('/api/stats');
 
-      const pingEl = document.getElementById('stat-bot-ping');
-      const ramEl = document.getElementById('stat-ram-usage');
-      if (pingEl) pingEl.textContent = `${data.bot.ping} ms`;
-      if (ramEl) ramEl.textContent = `${data.telemetry.ramMB} MB`;
+      const connected = Boolean(data.bot.connected);
+      const demo = Boolean(data.bot.demoMode);
+      const { status, text } = resolveBotStatus({
+        connected,
+        demoMode: demo,
+        tag: data.bot.tag || 'Mochi#0000',
+      });
 
-      const modeBadge = document.getElementById('bot-mode-badge');
-      const statusDot = document.getElementById('status-dot');
-      const statusText = document.getElementById('bot-status-text');
-
-      if (modeBadge && statusDot && statusText) {
-        if (data.bot.connected) {
-          modeBadge.textContent = 'LIVE DISCORD';
-          modeBadge.style.background = 'rgba(16, 185, 129, 0.2)';
-          modeBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
-          modeBadge.style.color = '#10b981';
-          statusDot.className = 'status-dot';
-          statusText.textContent = `Connected as ${data.bot.tag}`;
-        } else {
-          modeBadge.textContent = 'SANDBOX MODE';
-          statusDot.className = 'status-dot sandbox';
-          statusText.textContent = 'Sandbox Engine Ready';
-        }
+      if (window.MochiLayout) {
+        window.MochiLayout.setStatus({ status, text });
       }
 
-      const statusBox = document.getElementById('bot-connect-status-box');
-      if (statusBox) {
-        statusBox.textContent = '';
-        const inner = document.createElement('div');
-        if (data.bot.connected) {
-          inner.appendChild(document.createElement('b')).textContent = 'Connected to Discord';
-          inner.appendChild(document.createTextNode(' as '));
-          const code = document.createElement('code');
-          code.textContent = data.bot.tag;
-          inner.appendChild(code);
-          inner.appendChild(document.createTextNode('. Bot is actively listening to gateway events.'));
-        } else {
-          inner.appendChild(document.createElement('b')).textContent = 'Running in Sandbox Demo Mode';
-          inner.appendChild(document.createTextNode('. Bot is operational locally with SQLite persistence & real-time WebSocket simulator.'));
-        }
-        statusBox.appendChild(inner);
+      const ping = `${data.bot.ping} ms`;
+      const ram = `${data.telemetry.ramMB} MB`;
+
+      // Compact status line (Overview) — plain sentence, no drama.
+      const statusLine = document.getElementById('bot-status-line');
+      if (statusLine) {
+        statusLine.textContent = `${text} · ${ping} latency · ${ram} memory`;
+      }
+
+      // Settings definition list (Bot status section).
+      const setDiscord = document.getElementById('settings-discord');
+      const setBot = document.getElementById('settings-bot');
+      const setMode = document.getElementById('settings-mode');
+      const setLatency = document.getElementById('settings-latency');
+      const setMemory = document.getElementById('settings-memory');
+      if (setDiscord) setDiscord.textContent = connected ? 'Connected' : demo ? 'Demo' : 'Disconnected';
+      if (setBot) setBot.textContent = data.bot.tag || 'Mochi#0000';
+      if (setMode) setMode.textContent = demo ? 'Demo' : 'Development';
+      if (setLatency) setLatency.textContent = ping;
+      if (setMemory) setMemory.textContent = ram;
+
+      // Setup instructions only make sense when Discord is genuinely absent.
+      const setupBox = document.getElementById('setup-instructions');
+      if (setupBox) {
+        setupBox.style.display = connected || demo ? 'none' : 'block';
       }
     } catch (e) {
       console.error('Error fetching stats:', e);
@@ -401,6 +380,12 @@ class MochiSharedCore {
 
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
+    toast.setAttribute('role', 'status');
+
+    const indicator = document.createElement('span');
+    indicator.className = 'toast-indicator';
+    indicator.setAttribute('aria-hidden', 'true');
+
     const inner = document.createElement('div');
 
     const segments = Array.isArray(content) ? content : [{ text: content }];
@@ -419,19 +404,41 @@ class MochiSharedCore {
       }
     }
 
-    toast.appendChild(inner);
+    toast.append(indicator, inner);
     container.appendChild(toast);
 
-    setTimeout(() => {
+    window.setTimeout(() => {
       toast.style.opacity = '0';
-      toast.style.transform = 'translateX(100%)';
-      toast.style.transition = 'all 0.3s ease';
-      setTimeout(() => toast.remove(), 300);
+      toast.style.transform = 'translateY(4px)';
+      window.setTimeout(() => toast.remove(), 200);
     }, 4000);
   }
 }
 
-const Mochi = new MochiSharedCore();
-window.Mochi = Mochi;
-window.apiFetch = apiFetch;
-window.escapeHtml = escapeHtml;
+if (typeof window !== 'undefined') {
+  const Mochi = new MochiSharedCore();
+  window.Mochi = Mochi;
+  window.apiFetch = apiFetch;
+  window.escapeHtml = escapeHtml;
+
+  // Shared modal behavior: Escape and backdrop clicks close the open modal(s).
+  // Pages listen for `mochi:close-modals` and run their own close routines so
+  // per-modal state stays consistent. Never used for destructive confirms
+  // (those use the native confirm() dialog).
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.classList && e.target.classList.contains('modal-overlay')) {
+      window.dispatchEvent(new CustomEvent('mochi:close-modals'));
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      window.dispatchEvent(new CustomEvent('mochi:close-modals'));
+    }
+  });
+}
+
+// CommonJS export for unit tests. The Mochi core and shell wiring only run in
+// a browser; the pure helpers are exported for Node tests.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { resolveBotStatus, apiFetch, MochiSharedCore };
+}

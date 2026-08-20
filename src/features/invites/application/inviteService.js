@@ -246,6 +246,10 @@ class InviteService {
           attribution,
           inviter: inviterInfo,
           inviterStats,
+          // Carry the member's actual fake/suspicious state from the current
+          // projection. The transport mapper uses Boolean(event.isFake), so an
+          // omitted field would silently convert every leave to isFake=false.
+          isFake: Boolean(member.is_fake),
           occurredAt: new Date().toISOString(),
         });
       }

@@ -1,5 +1,5 @@
 /**
- * 🍡 WebSocket Event Simulator Page Script
+ * WebSocket Event Simulator Page Script
  */
 
 class SimulatorPage {
@@ -21,7 +21,7 @@ class SimulatorPage {
 
   async simulateEvent(type, isFake = false) {
     if (!this.currentGuildId) {
-      window.Mochi.showToast('Please select a guild first', 'leave');
+      window.Mochi.showToast('Select a guild first.', 'leave');
       return;
     }
 
@@ -52,9 +52,9 @@ class SimulatorPage {
         });
 
         if (data.success) {
-          window.Mochi.showToast([{ text: `Dispatched simulated ${isFake ? 'fake join' : 'join'} event for ` }, { b: name }], 'success');
+          window.Mochi.showToast([{ text: `Dispatched simulated ${isFake ? 'suspicious join' : 'join'} for ` }, { b: name }], 'success');
         } else {
-          window.Mochi.showToast('Simulated join was a duplicate/no-op.', 'leave');
+          window.Mochi.showToast('Simulated join was a duplicate or no-op.', 'leave');
         }
       } else if (type === 'leave') {
         const data = await apiFetch(`/api/guilds/${this.currentGuildId}/simulate/leave`, {
@@ -63,14 +63,14 @@ class SimulatorPage {
         });
 
         if (data.success) {
-          window.Mochi.showToast('Dispatched simulated departure event', 'leave');
+          window.Mochi.showToast('Dispatched simulated leave.', 'leave');
         } else {
-          window.Mochi.showToast('Simulated leave was a duplicate/no-op.', 'leave');
+          window.Mochi.showToast('Simulated leave was a duplicate or no-op.', 'leave');
         }
       }
     } catch (err) {
       console.error('Error simulating event:', err);
-      window.Mochi.showToast(err.status === 403 ? 'You do not have permission to simulate events.' : 'Failed to trigger simulation event', 'leave');
+      window.Mochi.showToast(err.status === 403 ? 'You do not have permission to simulate events.' : 'Could not trigger simulation.', 'leave');
     }
   }
 
@@ -81,7 +81,7 @@ class SimulatorPage {
       const data = await apiFetch(`/api/guilds/${guildId}/simulate/automod`, {
         method: 'POST',
         body: {
-          ruleName: '🛡️ Block Scam Links & Malicious URLs',
+          ruleName: 'Block scam links',
           triggerType: 1,
           username: 'PhishingBot',
           channelName: 'general-chat',
@@ -92,11 +92,11 @@ class SimulatorPage {
       });
 
       if (data.success) {
-        window.Mochi.showToast('🚨 Dispatched simulated AutoMod interception event!', 'leave');
+        window.Mochi.showToast('Dispatched simulated AutoMod action.', 'leave');
       }
     } catch (err) {
       console.error('Error simulating AutoMod:', err);
-      window.Mochi.showToast('Failed to trigger AutoMod simulation', 'leave');
+      window.Mochi.showToast('Could not trigger AutoMod simulation.', 'leave');
     }
   }
 }

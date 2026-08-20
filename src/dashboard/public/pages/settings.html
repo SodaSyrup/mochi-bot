@@ -3,105 +3,70 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mochi 🍡 • Settings & Bot Status</title>
+  <title>Mochi · Settings</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍡</text></svg>">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="/css/dashboard.css">
   <script src="/socket.io/socket.io.js"></script>
 </head>
-<body>
+<body data-page="settings">
   <div id="app">
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-header">
-        <div class="brand-logo">🍡</div>
-        <div class="brand-title">
-          <h1>Mochi</h1>
-          <span class="badge" id="bot-mode-badge">SANDBOX</span>
-        </div>
-      </div>
-
-      <nav class="sidebar-nav">
-        <div class="nav-section-title">Invite Tracker</div>
-        <a class="nav-item" href="/"><i class="fa-solid fa-chart-pie"></i> Overview</a>
-        <a class="nav-item" href="/analytics"><i class="fa-solid fa-chart-line"></i> Analytics</a>
-        <a class="nav-item" href="/leaderboard"><i class="fa-solid fa-trophy"></i> Leaderboard</a>
-        <a class="nav-item" href="/codes"><i class="fa-solid fa-link"></i> Active Codes</a>
-
-        <div class="nav-section-title">Moderation & Safety</div>
-        <a class="nav-item" href="/safety"><i class="fa-solid fa-shield-halved"></i> Safety & AutoMod</a>
-
-        <div class="nav-section-title">System</div>
-        <a class="nav-item" href="/simulator"><i class="fa-solid fa-flask"></i> Simulator</a>
-        <a class="nav-item active" href="/settings"><i class="fa-solid fa-sliders"></i> Settings</a>
-      </nav>
-
-      <div class="sidebar-footer">
-        <div class="status-pill">
-          <div class="status-dot sandbox" id="status-dot"></div>
-          <span id="bot-status-text">Mochi Engine Online</span>
-        </div>
-      </div>
-    </aside>
-
-    <!-- Main Content -->
+    <div id="sidebar-root"></div>
     <main class="main-content">
-      <!-- Topbar -->
-      <header class="topbar">
-        <div class="guild-selector-container">
-          <label for="guild-select" style="font-size: 12px; color: var(--text-dim);"><i class="fa-solid fa-server"></i> Guild:</label>
-          <select id="guild-select" class="guild-selector">
-            <option value="loading">Loading Servers...</option>
-          </select>
-        </div>
-
-        <div class="user-profile">
-          <div class="user-meta">
-            <div class="user-name" id="user-name">MochiAdmin</div>
-            <div class="user-role" id="user-role">Server Administrator</div>
-          </div>
-          <img src="https://cdn.discordapp.com/embed/avatars/0.png" alt="Avatar" class="user-avatar" id="user-avatar">
-        </div>
-      </header>
-
-      <!-- Page Views -->
+      <div id="topbar-root"></div>
       <div class="page-container">
         <section id="settings-view" class="view-section active">
           <div class="page-header">
             <div>
-              <h2><i class="fa-solid fa-sliders" style="color: var(--accent-cyan);"></i> Bot Settings & Status</h2>
-              <p>Environment configuration and Discord Gateway link.</p>
+              <h2>Settings</h2>
+              <p>Bot connection and application configuration.</p>
             </div>
-            <div>
-              <button class="btn btn-secondary btn-sm" onclick="settingsPage.refreshStatus()"><i class="fa-solid fa-rotate"></i> Refresh Status</button>
+            <div class="page-actions">
+              <button class="button button-secondary" onclick="settingsPage.refreshStatus()"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Refresh</button>
             </div>
           </div>
 
-          <div class="glass-panel" style="max-width: 700px;">
-            <div class="form-group">
-              <label class="form-label">Discord Bot Status</label>
-              <div id="bot-connect-status-box" style="padding: 14px 16px; background: var(--bg-card-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); font-size: 13.5px;">
-                Checking status...
-              </div>
+          <section class="section">
+            <div class="section-header">
+              <h3 class="section-title">Bot status</h3>
             </div>
+            <div class="def-list">
+              <div class="def-term">Discord</div>
+              <div class="def-value" id="settings-discord">Checking…</div>
+              <div class="def-term">Bot</div>
+              <div class="def-value" id="settings-bot">—</div>
+              <div class="def-term">Mode</div>
+              <div class="def-value" id="settings-mode">—</div>
+              <div class="def-term">Latency</div>
+              <div class="def-value" id="settings-latency">—</div>
+              <div class="def-term">Memory</div>
+              <div class="def-value" id="settings-memory">—</div>
+            </div>
+          </section>
 
-            <div class="form-group">
-              <label class="form-label">Connecting to Discord:</label>
-              <div style="font-size: 13px; color: var(--text-muted); line-height: 1.6;">
-                1. Set <code>DISCORD_TOKEN</code> and <code>CLIENT_ID</code> in <code>/home/mochi/.env</code>.<br>
-                2. Run <code>bun run deploy-commands</code> to sync slash commands.<br>
-                3. Restart with <code>bun dev</code>!
-              </div>
+          <section class="section" id="setup-instructions">
+            <div class="section-header">
+              <h3 class="section-title">Connecting to Discord</h3>
             </div>
-          </div>
+            <div class="panel panel-narrow">
+              <p class="text-secondary setup-intro">The bot is not connected to Discord. To connect it:</p>
+              <ol class="setup-list">
+                <li>Set <code>DISCORD_TOKEN</code> and <code>CLIENT_ID</code> in your <code>.env</code> file.</li>
+                <li>Run <code>bun run deploy-commands</code> to sync slash commands.</li>
+                <li>Restart with <code>bun dev</code>.</li>
+              </ol>
+            </div>
+          </section>
         </section>
       </div>
     </main>
   </div>
 
+  <div id="overlay-root"></div>
   <div id="toast-container"></div>
 
   <script src="/js/escapeHtml.js"></script>
+  <script src="/js/layout.js"></script>
   <script src="/js/shared.js"></script>
   <script src="/js/pages/settings.js"></script>
 </body>

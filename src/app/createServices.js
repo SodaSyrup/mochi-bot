@@ -33,7 +33,7 @@ function createServices({ config, db, eventBus, client, logger }) {
   if (config.app.isDemo) {
     guildGateway = new DemoGuildGateway();
     inviteGateway = new DemoInviteGateway();
-    safetyGateway = new DemoSafetyGateway();
+    safetyGateway = new DemoSafetyGateway({ eventBus });
   } else {
     guildGateway = new DiscordGuildGateway({ client, logger });
     inviteGateway = new DiscordInviteGateway({ client, logger });

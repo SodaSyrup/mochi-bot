@@ -1,5 +1,5 @@
 /**
- * 🍡 Overview Page Script
+ * Overview Page Script
  */
 
 class OverviewPage {
@@ -41,7 +41,7 @@ class OverviewPage {
     if (this.currentGuildId) {
       await window.Mochi.fetchStats();
       await this.loadOverview();
-      window.Mochi.showToast('Server metrics refreshed!', 'success');
+      window.Mochi.showToast('Metrics refreshed.', 'success');
     }
   }
 
@@ -51,8 +51,8 @@ class OverviewPage {
       const data = await res.json();
       const totalInvitersEl = document.getElementById('stat-total-inviters');
       const totalMembersEl = document.getElementById('stat-total-members');
-      if (totalInvitersEl) totalInvitersEl.textContent = data.guild.totalInviters || 0;
-      if (totalMembersEl) totalMembersEl.textContent = data.guild.memberCount || 0;
+      if (totalInvitersEl) totalInvitersEl.textContent = (data.guild.totalInviters || 0).toLocaleString();
+      if (totalMembersEl) totalMembersEl.textContent = (data.guild.memberCount || 0).toLocaleString();
     } catch (e) {
       console.error('Error fetching guild details:', e);
     }
@@ -66,26 +66,25 @@ class OverviewPage {
       lbTbody.innerHTML = '';
 
       if (lbData.leaderboard.length === 0) {
-        lbTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-dim);">No invites tracked yet.</td></tr>`;
+        lbTbody.innerHTML = `<tr><td colspan="4" class="empty-state">No invites tracked yet.</td></tr>`;
       } else {
-        const medals = ['🥇', '🥈', '🥉'];
         lbData.leaderboard.forEach((r, idx) => {
-          const rank = idx < 3 ? medals[idx] : `#${idx + 1}`;
+          const rank = idx + 1;
           const tr = document.createElement('tr');
           tr.innerHTML = `
-            <td><b>${escapeHtml(rank)}</b></td>
+            <td class="rank-cell ${rank <= 3 ? 'rank-top' : ''}">${rank}</td>
             <td>
               <div class="user-cell">
-                <img src="${escapeHtml(r.avatar)}" class="user-cell-avatar">
+                <img src="${escapeHtml(r.avatar)}" class="user-cell-avatar" alt="" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
                 <div>
                   <div class="user-cell-name">${escapeHtml(r.username)}</div>
                   <div class="user-cell-id">${escapeHtml(r.user_id)}</div>
                 </div>
               </div>
             </td>
-            <td><span class="badge-tag regular"><b>${escapeHtml(r.total)}</b> Net</span></td>
-            <td style="font-size: 12px; color: var(--text-muted);">
-              ${escapeHtml(r.regular)} reg • ${escapeHtml(r.leaves)} left • ${escapeHtml(r.fake)} fake
+            <td class="num net">${escapeHtml(r.total)}</td>
+            <td class="text-muted text-small">
+              ${escapeHtml(r.regular)} regular · ${escapeHtml(r.leaves)} leaves · ${escapeHtml(r.fake)} fake
             </td>
           `;
           lbTbody.appendChild(tr);
@@ -104,23 +103,23 @@ class OverviewPage {
       histTbody.innerHTML = '';
 
       if (histData.history.length === 0) {
-        histTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-dim);">No recent joins.</td></tr>`;
+        histTbody.innerHTML = `<tr><td colspan="4" class="empty-state">No recent joins.</td></tr>`;
       } else {
         histData.history.forEach(j => {
           const tr = document.createElement('tr');
           const isFake = Boolean(j.is_fake);
           const isLeft = Boolean(j.is_left);
 
-          let statusBadge = `<span class="badge-tag regular">✅ Verified</span>`;
-          if (isLeft) statusBadge = `<span class="badge-tag leave">🚪 Left</span>`;
-          else if (isFake) statusBadge = `<span class="badge-tag fake">⚠️ Fake/Alt</span>`;
+          let statusBadge = `<span class="badge badge-success">Active</span>`;
+          if (isLeft) statusBadge = `<span class="badge badge-neutral">Left</span>`;
+          else if (isFake) statusBadge = `<span class="badge badge-warning">Suspicious</span>`;
 
-          const labelTag = j.invite_label ? ` <span class="badge-label" style="font-size: 11px; padding: 2px 6px;">🏷️ ${escapeHtml(j.invite_label)}</span>` : '';
+          const labelTag = j.invite_label ? ` <span class="badge badge-neutral">${escapeHtml(j.invite_label)}</span>` : '';
 
           tr.innerHTML = `
             <td>
               <div class="user-cell">
-                <img src="${escapeHtml(j.avatar)}" class="user-cell-avatar">
+                <img src="${escapeHtml(j.avatar)}" class="user-cell-avatar" alt="" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
                 <div>
                   <div class="user-cell-name">${escapeHtml(j.username)}</div>
                 </div>

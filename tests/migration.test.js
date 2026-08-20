@@ -66,7 +66,7 @@ async function runMigrationTests() {
     runMigrations(db, { silent: true });
 
     const versions = db.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((r) => r.version);
-    assert.deepStrictEqual(versions, [1, 2, 3]);
+    assert.deepStrictEqual(versions, [1, 2, 3, 4]);
 
     // All member rows preserved with normalized attribution.
     const members = db.prepare('SELECT user_id, attribution_type, inviter_id, membership_cycle FROM invite_members ORDER BY user_id').all();
@@ -132,6 +132,70 @@ async function runMigrationTests() {
       [byId['inv2'].regular, byId['inv2'].bonus, byId['inv2'].leaves, byId['inv2'].fake],
       [3, 0, 0, 0]
     );
+  });
+
+  suite.test('legacy daily statistics are archived before the rebuild', () => {
+    const db = createLegacyFixtureDb();
+    runMigrations(db, { silent: true });
+
+    const archived = db.prepare(`
+      SELECT guild_id, date, joins, leaves, fakes
+      FROM legacy_daily_invite_stats_snapshot
+    `).all();
+    // The fixture created one pre-migration daily row for guild1 / 2026-01-01.
+    assert.strictEqual(archived.length, 1);
+    assert.deepStrictEqual(
+      [archived[0].guild_id, archived[0].date, archived[0].joins, archived[0].leaves, archived[0].fakes],
+      ['guild1', '2026-01-01', 1, 0, 0]
+    );
+  });
+
+  suite.test('archive predicate parentheses: fake-only rows are NOT re-archived', () => {
+    const db = createLegacyFixtureDb();
+    runMigrations(db, { silent: true });
+
+    // The explicit parentheses mean `AND NOT EXISTS` guards the WHOLE
+    // non-zero predicate, so a fake-only row already archived stays archived
+    // exactly once (without parentheses SQL would only guard the fake term).
+    const rows = db.prepare(`
+      SELECT user_id, fake FROM legacy_inviter_stats_snapshot WHERE user_id = 'inv1'
+    `).all();
+    assert.strictEqual(rows.length, 1);
+    const counts = db.prepare('SELECT COUNT(*) c FROM legacy_inviter_stats_snapshot').get();
+    assert.strictEqual(counts.c, 2);
+  });
+
+  suite.test('migration 004 does not double-archive when 003 already archived', () => {
+    const db = createLegacyFixtureDb();
+    runMigrations(db, { silent: true });
+    const before = db.prepare('SELECT COUNT(*) c FROM legacy_daily_invite_stats_snapshot').get().c;
+    const n = runMigrations(db, { silent: true });
+    const after = db.prepare('SELECT COUNT(*) c FROM legacy_daily_invite_stats_snapshot').get().c;
+    assert.strictEqual(n, 0);
+    assert.strictEqual(after, before);
+  });
+
+  suite.test('migration 004 backfills the daily archive for DBs where 003 already ran', () => {
+    // Simulate a database that migrated before the daily archive existed:
+    // run 003's schema/state, then drop the archive table and re-run 004 by
+    // applying only the pending path. Easiest reliable approach: build a fresh
+    // fixture, run migrations, delete the daily snapshot, and re-run the 004
+    // migration body against a schema_migrations that already contains 4.
+    const db = createLegacyFixtureDb();
+    runMigrations(db, { silent: true });
+
+    // Wipe the archive to mimic a pre-archive deployment.
+    db.exec('DROP TABLE legacy_daily_invite_stats_snapshot');
+
+    const migration4 = require('../src/database/migrations/004-archive-legacy-daily-stats');
+    migration4.up(db);
+
+    const archived = db.prepare('SELECT COUNT(*) c FROM legacy_daily_invite_stats_snapshot').get();
+    assert.ok(archived.c >= 1, 'migration 004 must backfill the daily archive');
+
+    // Idempotent on re-run.
+    migration4.up(db);
+    assert.strictEqual(db.prepare('SELECT COUNT(*) c FROM legacy_daily_invite_stats_snapshot').get().c, archived.c);
   });
 
   suite.test('union reconciliation preserves a removed legacy inviter in the archive', () => {

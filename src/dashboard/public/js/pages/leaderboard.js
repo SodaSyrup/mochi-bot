@@ -1,5 +1,5 @@
 /**
- * 🍡 Leaderboard Page Script
+ * Leaderboard Page Script
  */
 
 class LeaderboardPage {
@@ -38,29 +38,29 @@ class LeaderboardPage {
       tbody.innerHTML = '';
 
       if (!data.leaderboard || data.leaderboard.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim);">No inviters found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="empty-state">No inviters found.</td></tr>`;
         return;
       }
 
-      const medals = ['🥇', '🥈', '🥉'];
       data.leaderboard.forEach((r, idx) => {
-        const rank = idx < 3 ? medals[idx] : `#${idx + 1}`;
+        const rank = idx + 1;
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td><b>${escapeHtml(rank)}</b></td>
+          <td class="rank-cell ${rank <= 3 ? 'rank-top' : ''}">${rank}</td>
           <td>
             <div class="user-cell">
-              <img src="${escapeHtml(r.avatar)}" class="user-cell-avatar">
+              <img src="${escapeHtml(r.avatar)}" class="user-cell-avatar" alt="" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
               <div>
                 <div class="user-cell-name">${escapeHtml(r.username)}</div>
                 <div class="user-cell-id">${escapeHtml(r.user_id)}</div>
               </div>
             </div>
           </td>
-          <td><span class="badge-tag regular"><b>${escapeHtml(r.total)}</b> Net</span></td>
-          <td><span class="badge-tag regular">${escapeHtml(r.regular)}</span></td>
-          <td><span class="badge-tag leave">${escapeHtml(r.leaves)}</span></td>
-          <td><span class="badge-tag fake">${escapeHtml(r.fake)}</span></td>
+          <td class="num net">${escapeHtml(r.total)}</td>
+          <td class="num">${escapeHtml(r.regular)}</td>
+          <td class="num">${escapeHtml(r.bonus)}</td>
+          <td class="num">${escapeHtml(r.leaves)}</td>
+          <td class="num">${escapeHtml(r.fake)}</td>
         `;
         tbody.appendChild(tr);
       });

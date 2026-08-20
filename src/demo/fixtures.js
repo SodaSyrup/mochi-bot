@@ -7,7 +7,7 @@ const DEMO_ADMIN_ID = '123456789012345678';
 
 const DEMO_GUILD = Object.freeze({
   id: DEMO_GUILD_ID,
-  name: '🌸 Mochi Hangout [Demo]',
+  name: 'Mochi Hangout [Demo]',
   icon: 'https://cdn.discordapp.com/embed/avatars/1.png',
   memberCount: 248,
   ownerId: DEMO_ADMIN_ID,
@@ -77,9 +77,9 @@ const DEMO_INVITES = Object.freeze([
 ]);
 
 const DEMO_LABELS = Object.freeze({
-  'mochi-welcome': { label: '🌸 Official Welcome Link', channelId: 'chan_welcome', channelName: 'welcome' },
-  'mochi-twitter': { label: '🐦 Twitter Campaign', channelId: 'chan_general', channelName: 'general-chat' },
-  'mochi-partner': { label: '🤝 Partner Sponsorship', channelId: 'chan_community', channelName: 'community-lounge' },
+  'mochi-welcome': { label: 'Official Welcome Link', channelId: 'chan_welcome', channelName: 'welcome' },
+  'mochi-twitter': { label: 'Twitter Campaign', channelId: 'chan_general', channelName: 'general-chat' },
+  'mochi-partner': { label: 'Partner Sponsorship', channelId: 'chan_community', channelName: 'community-lounge' },
 });
 
 const DEMO_MEMBERS = Object.freeze([
@@ -95,7 +95,7 @@ const DEMO_MEMBERS = Object.freeze([
 const DEMO_AUTOMOD_RULES = Object.freeze([
   {
     id: 'automod_rule_1',
-    name: '🛡️ Block Scam Links & Malicious URLs',
+    name: 'Block Scam Links and Malicious URLs',
     enabled: true,
     eventType: 1,
     triggerType: 1,
@@ -108,7 +108,7 @@ const DEMO_AUTOMOD_RULES = Object.freeze([
       mentionRaidProtectionEnabled: false,
     },
     actions: [
-      { type: 1, metadata: { customMessage: '🛑 Posting unauthorized invite links or malicious domains is strictly forbidden!' } },
+      { type: 1, metadata: { customMessage: 'Posting unauthorized invite links or malicious domains is forbidden.' } },
       { type: 2, metadata: { channelId: 'chan_announcements' } },
     ],
     exemptRoles: ['role_admin', 'role_mod'],
@@ -117,7 +117,7 @@ const DEMO_AUTOMOD_RULES = Object.freeze([
   },
   {
     id: 'automod_rule_2',
-    name: '🚫 Anti-Spam & Severe Profanity Filter',
+    name: 'Anti-Spam and Profanity Filter',
     enabled: true,
     eventType: 1,
     triggerType: 4,
@@ -130,7 +130,7 @@ const DEMO_AUTOMOD_RULES = Object.freeze([
       mentionRaidProtectionEnabled: false,
     },
     actions: [
-      { type: 1, metadata: { customMessage: '⚠️ Message blocked due to server safety policy.' } },
+      { type: 1, metadata: { customMessage: 'Message blocked due to server safety policy.' } },
       { type: 3, metadata: { durationSeconds: 300 } },
     ],
     exemptRoles: ['role_admin'],
@@ -139,7 +139,7 @@ const DEMO_AUTOMOD_RULES = Object.freeze([
   },
   {
     id: 'automod_rule_3',
-    name: '⚡ Anti-Mention Raid Protection (Limit 5)',
+    name: 'Anti-Mention Raid Protection (Limit 5)',
     enabled: true,
     eventType: 1,
     triggerType: 5,
@@ -152,7 +152,7 @@ const DEMO_AUTOMOD_RULES = Object.freeze([
       mentionRaidProtectionEnabled: true,
     },
     actions: [
-      { type: 1, metadata: { customMessage: '🚨 Excessive mentions detected and blocked!' } },
+      { type: 1, metadata: { customMessage: 'Excessive mentions detected and blocked.' } },
       { type: 3, metadata: { durationSeconds: 600 } },
     ],
     exemptRoles: ['role_admin', 'role_mod'],
@@ -161,7 +161,7 @@ const DEMO_AUTOMOD_RULES = Object.freeze([
   },
   {
     id: 'automod_rule_4',
-    name: '👤 Impersonation & Sus Profile Blocker',
+    name: 'Impersonation and Profile Blocker',
     enabled: false,
     eventType: 2,
     triggerType: 6,

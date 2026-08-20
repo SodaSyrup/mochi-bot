@@ -9,10 +9,12 @@ const { runSerialQueueTests } = require('./guildSerialQueue.test');
 const { runPermissionTests } = require('./permissions.test');
 const { runGuildAccessTests } = require('./guildAccess.test');
 const { runApiTests, runDevelopmentLoginTests } = require('./api.test');
-const { runSocketTests, runSocketIsolationTests } = require('./socket.test');
+const { runSocketTests, runSocketIsolationTests, runSocketSessionPersistenceTests } = require('./socket.test');
 const { runDemoIsolationTests } = require('./demoIsolation.test');
 const { runOAuthTests } = require('./oauth.test');
 const { runFrontendSafetyTests } = require('./frontendSafety.test');
+const { runFrontendShellTests } = require('./frontendShell.test');
+const { runFrontendSmokeTests } = require('./frontendSmoke.test');
 const { runPermissionFreshnessTests } = require('./permissionFreshness.test');
 const { runSafetyTests } = require('./safety.test');
 const { runInviteCacheTests } = require('./inviteCache.test');
@@ -39,9 +41,12 @@ const suites = [
   ['Safety Error Handling', runSafetyTests],
   ['Socket.IO Authorization & Isolation', runSocketTests],
   ['Socket.IO Guild Isolation', runSocketIsolationTests],
+  ['Socket.IO Session Persistence', runSocketSessionPersistenceTests],
   ['Demo / Live Isolation', runDemoIsolationTests],
   ['Discord OAuth', runOAuthTests],
   ['Frontend Injection Safety', runFrontendSafetyTests],
+  ['Frontend Shell (layout + status)', runFrontendShellTests],
+  ['Frontend Shell Smoke (DOM load)', runFrontendSmokeTests],
 ];
 
 async function runAll() {

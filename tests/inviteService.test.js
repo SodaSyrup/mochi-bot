@@ -159,6 +159,23 @@ async function runInviteServiceTests() {
     assert.strictEqual(repos.invites.getInviter('g', 'inv').total, 0);
   });
 
+  suite.test('regression: a suspicious member leaving publishes isFake=true', async () => {
+    const { service, bus, repos } = buildService();
+    // Record a fake (suspicious) member directly through the repository.
+    repos.invites.trackJoin({
+      guildId: 'g',
+      userId: 'mfake2',
+      attribution: { type: AttributionType.INVITE, inviterId: 'inv', inviteCode: 'c' },
+      isFake: true,
+    });
+
+    await service.trackMemberLeave({ id: 'mfake2', guildId: 'g' });
+
+    const evt = bus.recorded.find((r) => r.event === InviteEvents.MemberLeft && r.payload.member.id === 'mfake2');
+    assert.ok(evt, 'memberLeft must be published for the fake member');
+    assert.strictEqual(evt.payload.isFake, true, 'isFake must reflect the projection, never default to false');
+  });
+
   suite.test('fetch failure records UNKNOWN attribution instead of crashing', async () => {
     const gateway = createFakeInviteGateway();
     gateway.fetchGuildInvites = async () => null; // unavailable
