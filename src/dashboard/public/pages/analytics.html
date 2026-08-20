@@ -71,19 +71,125 @@
           <div class="page-header">
             <div>
               <h2><i class="fa-solid fa-chart-line" style="color: var(--accent-cyan);"></i> Invite Analytics & Growth</h2>
-              <p>Historical trends for joins, leaves, and fake account detection.</p>
+              <p>Historical trends for joins, leaves, fake accounts, and live member audit trail.</p>
             </div>
-            <div>
-              <button class="btn btn-secondary btn-sm" onclick="analyticsPage.fetchAnalytics()"><i class="fa-solid fa-rotate"></i> Refresh Chart</button>
+            <div style="display: flex; gap: 10px;">
+              <button class="btn btn-secondary btn-sm" id="btn-sync-members" onclick="analyticsPage.syncHistoricalMembers()" title="Backfill all current server members who joined before the bot was added">
+                <i class="fa-solid fa-clock-rotate-left"></i> Sync Historical Members
+              </button>
+              <button class="btn btn-secondary btn-sm" onclick="analyticsPage.refreshAll()"><i class="fa-solid fa-rotate"></i> Refresh Data</button>
             </div>
           </div>
 
+          <!-- Quick Metrics Bar -->
+          <div class="grid-stats" style="margin-bottom: 24px;">
+            <div class="stat-card" style="--card-accent: var(--accent-emerald);">
+              <div class="stat-card-header">
+                <span class="stat-title">Active Joins</span>
+                <div class="stat-icon"><i class="fa-solid fa-user-plus"></i></div>
+              </div>
+              <div class="stat-value" id="stat-active-joins">--</div>
+              <div class="stat-subtitle">Current retained members</div>
+            </div>
+
+            <div class="stat-card" style="--card-accent: var(--accent-rose);">
+              <div class="stat-card-header">
+                <span class="stat-title">Departures (Leaves)</span>
+                <div class="stat-icon"><i class="fa-solid fa-user-minus"></i></div>
+              </div>
+              <div class="stat-value" id="stat-total-leaves">--</div>
+              <div class="stat-subtitle">Members who left server</div>
+            </div>
+
+            <div class="stat-card" style="--card-accent: var(--accent-amber);">
+              <div class="stat-card-header">
+                <span class="stat-title">Fake / Alt Flags</span>
+                <div class="stat-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+              </div>
+              <div class="stat-value" id="stat-total-fakes">--</div>
+              <div class="stat-subtitle">Accounts below age threshold</div>
+            </div>
+
+            <div class="stat-card" style="--card-accent: var(--accent-purple);">
+              <div class="stat-card-header">
+                <span class="stat-title">Retention Rate</span>
+                <div class="stat-icon"><i class="fa-solid fa-chart-pie"></i></div>
+              </div>
+              <div class="stat-value" id="stat-retention-rate">--%</div>
+              <div class="stat-subtitle">Joins retained vs departures</div>
+            </div>
+          </div>
+
+          <!-- Growth Trend Chart -->
+          <div class="glass-panel" style="margin-bottom: 24px;">
+            <div class="panel-header">
+              <div class="panel-title"><i class="fa-solid fa-wave-square"></i> Joins vs Departures vs Fake Accounts (Last 7 Days)</div>
+            </div>
+            <div style="height: 320px; position: relative;">
+              <canvas id="growthChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Member Joins & Departures Audit Trail -->
           <div class="glass-panel">
             <div class="panel-header">
-              <div class="panel-title"><i class="fa-solid fa-wave-square"></i> Joins vs Departures (Last 7 Days)</div>
+              <div>
+                <div class="panel-title"><i class="fa-solid fa-clipboard-list" style="color: var(--accent-pink);"></i> Member Activity & Audit Log</div>
+                <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">Real-time feed of all join and departure events, invite codes, campaign tags, and fake account detection.</div>
+              </div>
+              <span class="badge-tag regular"><i class="fa-solid fa-circle-dot fa-fade"></i> Live Gateway Feed</span>
             </div>
-            <div style="height: 340px; position: relative;">
-              <canvas id="growthChart"></canvas>
+
+            <!-- Filter & Search Toolbar -->
+            <div class="audit-toolbar">
+              <div class="filter-tabs" id="activity-filter-tabs">
+                <button class="filter-tab active" data-filter="all" onclick="analyticsPage.setFilter('all')">
+                  <i class="fa-solid fa-layer-group"></i> All Activity <span class="tab-count" id="count-all">0</span>
+                </button>
+                <button class="filter-tab" data-filter="joins" onclick="analyticsPage.setFilter('joins')">
+                  <i class="fa-solid fa-user-plus" style="color: #34d399;"></i> Active Joins <span class="tab-count" id="count-joins">0</span>
+                </button>
+                <button class="filter-tab" data-filter="leaves" onclick="analyticsPage.setFilter('leaves')">
+                  <i class="fa-solid fa-user-minus" style="color: #fb7185;"></i> Departures <span class="tab-count" id="count-leaves">0</span>
+                </button>
+                <button class="filter-tab" data-filter="fakes" onclick="analyticsPage.setFilter('fakes')">
+                  <i class="fa-solid fa-triangle-exclamation" style="color: #fbbf24;"></i> Fake / Alt Flags <span class="tab-count" id="count-fakes">0</span>
+                </button>
+              </div>
+
+              <div class="search-input-wrapper">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" id="activity-search-input" placeholder="Search user, inviter, code, or campaign..." oninput="analyticsPage.handleSearch(this.value)">
+              </div>
+            </div>
+
+            <!-- Activity Table -->
+            <div class="table-responsive">
+              <table class="mochi-table" id="analytics-activity-table">
+                <thead>
+                  <tr>
+                    <th>Member</th>
+                    <th>Activity & What Happened</th>
+                    <th>Invited By</th>
+                    <th>Account Status</th>
+                    <th>Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody id="activity-table-body">
+                  <tr>
+                    <td colspan="5" style="text-align: center; color: var(--text-dim); padding: 24px;">Loading activity history...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination Bar -->
+            <div class="pagination-bar" id="activity-pagination-bar" style="display: none;">
+              <span id="pagination-info">Showing 0-0 of 0 entries</span>
+              <div class="pagination-btn-group">
+                <button class="btn btn-secondary btn-sm" id="btn-prev-page" onclick="analyticsPage.prevPage()" disabled><i class="fa-solid fa-chevron-left"></i> Previous</button>
+                <button class="btn btn-secondary btn-sm" id="btn-next-page" onclick="analyticsPage.nextPage()" disabled>Next <i class="fa-solid fa-chevron-right"></i></button>
+              </div>
             </div>
           </div>
         </section>

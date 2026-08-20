@@ -159,12 +159,120 @@ module.exports = (client, io) => {
       return {
         ...j,
         username: u ? u.username : `User_${j.user_id.slice(-4)}`,
-        avatar: u ? u.displayAvatarURL() : 'https://cdn.discordapp.com/embed/avatars/0.png',
-        inviterName: inv ? inv.username : (j.inviter_id === 'VANITY' ? 'Vanity URL' : (j.inviter_id || 'Unknown'))
+        avatar: u ? u.displayAvatarURL() : `https://cdn.discordapp.com/embed/avatars/${Math.abs(j.user_id.split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % 5}.png`,
+        inviterName: inv ? inv.username : (j.inviter_id === 'VANITY' ? 'Vanity URL' : (j.inviter_id === '111111111111111111' ? 'TopInviter_Sakura' : (j.inviter_id || 'Unknown')))
       };
     });
 
     res.json({ history: enriched });
+  });
+
+  /**
+   * GET /api/guilds/:guildId/invites/activity-log - Detailed audit trail with filters & pagination
+   */
+  router.get('/guilds/:guildId/invites/activity-log', (req, res) => {
+    const { guildId } = req.params;
+    const limit = Math.min(parseInt(req.query.limit || '20', 10), 100);
+    const offset = Math.max(parseInt(req.query.offset || '0', 10), 0);
+    const filter = req.query.filter || 'all'; // 'all', 'joins', 'leaves', 'fakes'
+    const search = req.query.search || '';
+
+    const data = inviteRepo.getActivityLog(guildId, { limit, offset, filter, search });
+
+    const enrichedItems = data.items.map(item => {
+      const u = client.users?.cache.get(item.user_id);
+      const inv = item.inviter_id ? client.users?.cache.get(item.inviter_id) : null;
+
+      // Deterministic demo avatar index for consistent UI visuals
+      const avatarIndex = Math.abs(item.user_id.split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % 5;
+      const inviterAvatarIndex = item.inviter_id ? Math.abs(item.inviter_id.split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % 5 : 0;
+
+      const isPreExisting = item.inviter_id === 'PRE_EXISTING';
+
+      let eventType = 'JOIN';
+      if (item.is_left) {
+        eventType = 'LEAVE';
+      } else if (item.is_fake) {
+        eventType = 'FAKE_JOIN';
+      } else if (isPreExisting) {
+        eventType = 'PRE_BOT';
+      }
+
+      let inviterName;
+      if (isPreExisting) {
+        inviterName = 'Pre-Bot (Unknown)';
+      } else if (item.inviter_id === 'VANITY') {
+        inviterName = 'Vanity URL';
+      } else if (item.inviter_id === 'UNKNOWN') {
+        inviterName = 'Unknown / Direct';
+      } else if (inv) {
+        inviterName = inv.username;
+      } else if (item.inviter_id === '111111111111111111') {
+        inviterName = 'TopInviter_Sakura';
+      } else if (item.inviter_id === '222222222222222222') {
+        inviterName = 'Luna_Star';
+      } else if (item.inviter_id === '123456789012345678') {
+        inviterName = 'MochiAdmin';
+      } else {
+        inviterName = item.inviter_id || 'Unknown';
+      }
+
+      return {
+        userId: item.user_id,
+        username: u ? u.username : (item.user_id.startsWith('mem_') ? `Member_${item.user_id.slice(-4)}` : `User_${item.user_id.slice(-4)}`),
+        avatar: u ? u.displayAvatarURL() : `https://cdn.discordapp.com/embed/avatars/${avatarIndex}.png`,
+        inviterId: item.inviter_id,
+        inviterName,
+        inviterAvatar: inv ? inv.displayAvatarURL() : `https://cdn.discordapp.com/embed/avatars/${inviterAvatarIndex}.png`,
+        inviteCode: item.invite_code || 'direct',
+        inviteLabel: item.invite_label || null,
+        channelName: item.channel_name || null,
+        joinedAt: item.joined_at,
+        leftAt: item.left_at,
+        isFake: Boolean(item.is_fake),
+        isLeft: Boolean(item.is_left),
+        isPreExisting,
+        eventType
+      };
+    });
+
+    res.json({
+      items: enrichedItems,
+      total: data.total,
+      limit: data.limit,
+      offset: data.offset,
+      summary: data.summary
+    });
+  });
+
+  /**
+   * POST /api/guilds/:guildId/invites/sync-members - Backfill historical / pre-existing members
+   */
+  router.post('/guilds/:guildId/invites/sync-members', async (req, res) => {
+    const { guildId } = req.params;
+    const inviteTracker = require('../../bot/services/inviteTracker');
+    const discordGuild = client.guilds?.cache.get(guildId);
+
+    if (!discordGuild) {
+      // Sandbox / demo fallback — can't fetch real members
+      return res.json({
+        success: false,
+        message: 'Guild not connected to bot — sync requires the bot to be in the server.',
+        synced: 0
+      });
+    }
+
+    try {
+      const count = await inviteTracker.syncGuildMembers(discordGuild);
+      res.json({
+        success: true,
+        message: `Successfully synced ${count} historical member${count !== 1 ? 's' : ''} into the audit log.`,
+        synced: count
+      });
+    } catch (err) {
+      console.error('[Dashboard API] Error syncing pre-existing members:', err.message);
+      res.status(500).json({ success: false, message: 'Failed to sync historical members.', error: err.message });
+    }
   });
 
   /**

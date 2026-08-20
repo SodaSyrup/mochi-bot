@@ -230,13 +230,122 @@ class InviteRepository {
         im.joined_at, 
         im.is_fake, 
         im.is_left,
-        il.label as invite_label
+        im.left_at,
+        il.label as invite_label,
+        il.channel_name
       FROM invite_members im
       LEFT JOIN invite_labels il ON im.guild_id = il.guild_id AND im.invite_code = il.code
       WHERE im.guild_id = ?
-      ORDER BY im.joined_at DESC
+      ORDER BY COALESCE(im.left_at, im.joined_at) DESC
       LIMIT ?
     `).all(guildId, limit);
+  }
+
+  /**
+   * Get detailed activity log with filtering, searching, and pagination
+   */
+  getActivityLog(guildId, { limit = 20, offset = 0, filter = 'all', search = '' } = {}) {
+    const conditions = ['im.guild_id = ?'];
+    const params = [guildId];
+
+    if (filter === 'joins') {
+      conditions.push('im.is_left = 0');
+    } else if (filter === 'leaves') {
+      conditions.push('im.is_left = 1');
+    } else if (filter === 'fakes') {
+      conditions.push('im.is_fake = 1');
+    }
+
+    if (search && search.trim()) {
+      const s = `%${search.trim()}%`;
+      conditions.push('(im.user_id LIKE ? OR im.inviter_id LIKE ? OR im.invite_code LIKE ? OR il.label LIKE ?)');
+      params.push(s, s, s, s);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    // Total count for pagination
+    const countSql = `
+      SELECT COUNT(*) as count 
+      FROM invite_members im
+      LEFT JOIN invite_labels il ON im.guild_id = il.guild_id AND im.invite_code = il.code
+      WHERE ${whereClause}
+    `;
+    const countRow = db.prepare(countSql).get(...params);
+    const total = countRow ? countRow.count : 0;
+
+    // Fetch items ordered by most recent event (left_at if left, otherwise joined_at)
+    const itemsSql = `
+      SELECT 
+        im.user_id, 
+        im.inviter_id, 
+        im.invite_code, 
+        im.joined_at, 
+        im.is_fake, 
+        im.is_left,
+        im.left_at,
+        il.label as invite_label,
+        il.channel_name
+      FROM invite_members im
+      LEFT JOIN invite_labels il ON im.guild_id = il.guild_id AND im.invite_code = il.code
+      WHERE ${whereClause}
+      ORDER BY COALESCE(im.left_at, im.joined_at) DESC
+      LIMIT ? OFFSET ?
+    `;
+    const items = db.prepare(itemsSql).all(...params, limit, offset);
+
+    // Summary counts for tabs/badges
+    const summaryRow = db.prepare(`
+      SELECT 
+        COUNT(*) as total_members,
+        SUM(CASE WHEN is_left = 0 THEN 1 ELSE 0 END) as active_joins,
+        SUM(CASE WHEN is_left = 1 THEN 1 ELSE 0 END) as total_leaves,
+        SUM(CASE WHEN is_fake = 1 THEN 1 ELSE 0 END) as total_fakes
+      FROM invite_members
+      WHERE guild_id = ?
+    `).get(guildId);
+
+    return {
+      items,
+      total,
+      limit,
+      offset,
+      summary: {
+        total: summaryRow?.total_members || 0,
+        joins: summaryRow?.active_joins || 0,
+        leaves: summaryRow?.total_leaves || 0,
+        fakes: summaryRow?.total_fakes || 0
+      }
+    };
+  }
+
+  /**
+   * Sync and backfill pre-existing guild members who joined before the bot was invited
+   */
+  syncPreExistingMembers(guildId, membersList) {
+    const insertStmt = db.prepare(`
+      INSERT INTO invite_members (guild_id, user_id, inviter_id, invite_code, joined_at, is_fake, is_left, left_at)
+      VALUES (?, ?, 'PRE_EXISTING', 'PRE_BOT', ?, ?, 0, NULL)
+      ON CONFLICT(guild_id, user_id) DO NOTHING
+    `);
+
+    let insertedCount = 0;
+    const transaction = db.transaction(() => {
+      for (const m of membersList) {
+        const res = insertStmt.run(
+          guildId,
+          m.userId,
+          m.joinedAt || new Date().toISOString(),
+          m.isFake ? 1 : 0
+        );
+        if (res.changes > 0) {
+          insertedCount++;
+        }
+      }
+    });
+
+    transaction();
+    return insertedCount;
   }
 
   /**

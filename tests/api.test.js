@@ -243,6 +243,15 @@ async function testApiEndpoints() {
     assert.strictEqual(simAutoModData.incident.matchedKeyword, 'scam-test.ru');
     console.log('  ✅ POST /api/guilds/:guildId/simulate/automod triggered live incident event.');
 
+    // 20. Test GET /api/guilds/:guildId/invites/activity-log (Audit trail with filters)
+    const auditRes = await fetch(`${baseUrl}/api/guilds/${targetGuildId}/invites/activity-log?limit=10&filter=all`);
+    assert.strictEqual(auditRes.status, 200);
+    const auditData = await auditRes.json();
+    assert(Array.isArray(auditData.items));
+    assert(auditData.summary);
+    assert(typeof auditData.summary.total === 'number');
+    console.log(`  ✅ GET /api/guilds/:guildId/invites/activity-log returned ${auditData.items.length} audit entries.`);
+
     // 20. Test Multi-Page App (MPA) Routes
     const pages = [
       { path: '/', title: 'Invite Tracker & Overview' },

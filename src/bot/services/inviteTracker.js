@@ -51,8 +51,53 @@ class InviteTrackerService {
       inviteRepo.saveCachedInvites(guild.id, invitesArray);
 
       console.log(`[InviteTracker] Cached ${guildInvites.size} invites for guild: ${guild.name} (${guild.id})`);
+
+      // Backfill and sync historical / pre-existing members
+      await this.syncGuildMembers(guild);
     } catch (err) {
       console.error(`[InviteTracker] Error fetching invites for guild ${guild.id}:`, err.message);
+    }
+  }
+
+  /**
+   * Backfill pre-existing members who joined before the bot was added
+   */
+  async syncGuildMembers(guild) {
+    if (!guild || !guild.members) return 0;
+    try {
+      const settings = guildRepo.getGuild(guild.id, guild.name, guild.iconURL());
+      const thresholdDays = settings.fake_threshold_days || config.inviteTracker.fakeAccountThresholdDays;
+      const thresholdMs = thresholdDays * 24 * 60 * 60 * 1000;
+
+      let membersCollection;
+      try {
+        membersCollection = await guild.members.fetch();
+      } catch {
+        membersCollection = guild.members.cache;
+      }
+
+      const list = [];
+      membersCollection.forEach(member => {
+        if (member.user?.bot) return; // Skip bot accounts
+        const joinedTime = member.joinedTimestamp || Date.now();
+        const createdTime = member.user?.createdTimestamp || joinedTime;
+        const isFake = (joinedTime - createdTime) < thresholdMs;
+
+        list.push({
+          userId: member.id,
+          joinedAt: member.joinedAt ? member.joinedAt.toISOString() : new Date(joinedTime).toISOString(),
+          isFake
+        });
+      });
+
+      const count = inviteRepo.syncPreExistingMembers(guild.id, list);
+      if (count > 0) {
+        console.log(`[InviteTracker] Backfilled ${count} pre-existing members for guild ${guild.name} (${guild.id})`);
+      }
+      return count;
+    } catch (err) {
+      console.error(`[InviteTracker] Error syncing pre-existing members for ${guild.id}:`, err.message);
+      return 0;
     }
   }
 
