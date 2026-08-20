@@ -150,13 +150,15 @@ node scripts/rebuild-invite-projections.js --guild <guildId> --dry-run   # previ
 
 ### Upgrading an existing database
 
-The v2 migration synthesizes lifecycle events from existing `invite_members` rows, imports non-zero bonus values as one adjustment per inviter, and rebuilds projections. It is idempotent and recorded in `schema_migrations`. **Back up your database first:**
+Migration 3 (`backfill-invite-ledger`) synthesizes lifecycle events from existing `invite_members` rows, imports non-zero bonus values as one adjustment per inviter, and rebuilds projections. It is idempotent and recorded in `schema_migrations`. **Back up your database first:**
 
 ```bash
 cp data/mochi.sqlite data/mochi.sqlite.bak
 ```
 
-Before rebuilding, migration v3 archives the old mutable aggregate counters into `legacy_inviter_stats_snapshot` and the old daily statistics into `legacy_daily_invite_stats_snapshot`, so information the new ledger cannot reproduce (e.g. lost rejoin history) is preserved rather than silently destroyed. A union reconciliation report lists every removed/added/changed inviter row — an "old inviter existed, new projection has no row" case is reported, not missed. Migration v4 backfills the daily archive for databases that migrated before the archive existed; it is a no-op for fresh databases.
+Before rebuilding, migration 3 archives the old mutable aggregate counters into `legacy_inviter_stats_snapshot` and the old daily statistics into `legacy_daily_invite_stats_snapshot`, so information the new ledger cannot reproduce (e.g. lost rejoin history) is preserved rather than silently destroyed. A union reconciliation report lists every removed/added/changed inviter row — an "old inviter existed, new projection has no row" case is reported, not missed.
+
+Migration 4 (`archive-legacy-daily-stats`) archives the daily statistics currently present for databases that already completed the earlier ledger migration. If an older migration 3 had already replaced unreconstructable historical daily aggregates, those original values cannot be recovered without an external backup — migration 4 only archives whatever daily state remains, and it is a no-op for fresh databases.
 
 ## Slash Commands
 

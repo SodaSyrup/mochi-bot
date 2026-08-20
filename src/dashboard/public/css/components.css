@@ -161,7 +161,7 @@
 }
 
 .button-danger:hover:not(:disabled) {
-  background: var(--accent-soft);
+  background: var(--danger-soft);
   border-color: var(--danger);
   text-decoration: none;
 }
@@ -208,7 +208,7 @@
 .button-icon.danger:hover {
   color: var(--danger);
   border-color: var(--danger);
-  background: var(--accent-soft);
+  background: var(--danger-soft);
 }
 
 /* ------------------------------------------------------------------- forms */

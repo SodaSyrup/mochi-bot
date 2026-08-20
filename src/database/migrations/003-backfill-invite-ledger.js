@@ -1,5 +1,6 @@
 const { AttributionType, attributionFromLegacyInviter } = require('../../features/invites/domain/attribution');
 const { rebuildGuildInviteProjections } = require('../../features/invites/infrastructure/projectionRebuilder');
+const { getGuildIdsWithInviteData } = require('../../features/invites/infrastructure/projectionGuilds');
 
 const LEGACY_BONUS_REASON = 'Legacy bonus imported during invite ledger migration';
 
@@ -189,7 +190,11 @@ module.exports = {
       .all();
     const oldByKey = new Map(oldCounters.map((r) => [`${r.guild_id}:${r.user_id}`, r]));
 
-    const guildIds = db.prepare('SELECT DISTINCT guild_id FROM invite_members').all().map((r) => r.guild_id);
+    // Every guild with any invite persistence state must be rebuilt from the
+    // new ledger — including guilds discoverable only through projection or
+    // bonus rows with no invite_members row. Shared helper keeps this
+    // definition identical to the rebuild CLI and any future rebuild-all tool.
+    const guildIds = getGuildIdsWithInviteData(db);
     let rebuiltGuilds = 0;
     for (const guildId of guildIds) {
       rebuildGuildInviteProjections(db, guildId);

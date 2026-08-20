@@ -19,22 +19,12 @@ const { resolveDatabasePath } = require('../src/config');
 const { createDatabase } = require('../src/database/createDatabase');
 const { runMigrations } = require('../src/database/migrations');
 const { rebuildGuildInviteProjections } = require('../src/features/invites/infrastructure/projectionRebuilder');
+const { getGuildIdsWithInviteData } = require('../src/features/invites/infrastructure/projectionGuilds');
 
-// All durable sources that can identify a guild, so a guild is never skipped
-// merely because it currently has no invite event row. Projection-only rows
-// (stale members/inviters/daily stats with no ledger) are still included so an
-// integrity/repair run can clear them.
-const ALL_GUILD_IDS_SQL = `
-  SELECT guild_id FROM invite_events
-  UNION
-  SELECT guild_id FROM invite_bonus_adjustments
-  UNION
-  SELECT guild_id FROM invite_members
-  UNION
-  SELECT guild_id FROM inviters
-  UNION
-  SELECT guild_id FROM daily_invite_stats
-`;
+// Guild discovery for "all guilds" runs delegates to the shared helper so the
+// definition never drifts from migration 003 or future rebuild-all tools. It
+// covers durable ledger tables AND projection tables (stale projections must
+// still be discoverable so an integrity/repair run can clear them).
 
 function parseArgs(argv) {
   const args = { guilds: [], dryRun: false };
@@ -62,7 +52,7 @@ async function main() {
   if (targetGuilds.length > 0) {
     guildIds = targetGuilds;
   } else {
-    guildIds = db.prepare(ALL_GUILD_IDS_SQL).all().map((r) => r.guild_id);
+    guildIds = getGuildIdsWithInviteData(db);
   }
 
   if (guildIds.length === 0) {

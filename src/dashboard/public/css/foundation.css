@@ -27,6 +27,7 @@
   --success: #3ba55d;
   --warning: #d9a441;
   --danger: #d9534f;
+  --danger-soft: rgba(217, 83, 79, 0.12);
   --info: #5865f2;
 
   --radius-sm: 4px;

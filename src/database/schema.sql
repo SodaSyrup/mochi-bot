@@ -118,9 +118,11 @@ CREATE TABLE legacy_inviter_stats_snapshot (
 );
 
 -- Operational archive of the pre-ledger daily statistics, captured by migration
--- 003 before the rebuild replaces daily_invite_stats (migration 004 backfills it
--- for databases that migrated before the archive existed). Preserves old daily
--- history the synthetic lifecycle ledger cannot reconstruct. Not used at runtime.
+-- 003 before the rebuild replaces daily_invite_stats. Migration 004 backfills
+-- this table for databases that migrated before the archive existed — but it
+-- can only archive whatever daily state remains; history an older migration 003
+-- already destroyed and replaced is unrecoverable without an external backup.
+-- Not used at runtime.
 CREATE TABLE legacy_daily_invite_stats_snapshot (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,

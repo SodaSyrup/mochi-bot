@@ -6,9 +6,9 @@ const { DEMO_GUILD_ID } = require('../src/demo/fixtures');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function connect(url, cookie) {
+async function connect(url, cookie, { transports = ['polling'] } = {}) {
   const socket = createSocketClient(url, {
-    transports: ['polling'],
+    transports,
     forceNew: true,
     reconnection: false,
     extraHeaders: cookie ? { Cookie: cookie } : {},
@@ -35,16 +35,24 @@ function waitForEvent(socket, event, timeout = 2000) {
 }
 
 /**
- * Assert that a socket does NOT receive an event within a modest deterministic
- * window. Listeners must be attached before the publisher emits.
+ * Count every delivery of `eventName` on a socket. The listener MUST be
+ * attached before the publisher emits for the count to prove "exactly once"
+ * — attaching after the event arrived can only prove "no later duplicate".
  */
-async function expectNoSocketEvent(socket, event, timeout = 150) {
-  const received = [];
-  const listener = (data) => received.push(data);
-  socket.on(event, listener);
-  await sleep(timeout);
-  socket.off(event, listener);
-  assert.strictEqual(received.length, 0, `socket should not have received ${event}`);
+function countSocketEvents(socket, eventName) {
+  let count = 0;
+  const listener = () => {
+    count += 1;
+  };
+  socket.on(eventName, listener);
+  return {
+    get count() {
+      return count;
+    },
+    cleanup() {
+      socket.off(eventName, listener);
+    },
+  };
 }
 
 function buildCanonicalJoin(guildId, overrides = {}) {
@@ -291,59 +299,55 @@ async function runSocketIsolationTests() {
   });
 
   suite.testAsync('member event for guild B: A receives nothing, B receives exactly one', async () => {
-    // The no-leak listener must be ACTIVE while the event is published.
-    // Creating the promise attaches the listener synchronously; we publish only
-    // after both promises exist, then await them together.
-    const noLeak = expectNoSocketEvent(socketA, 'memberJoin');
-    const bReceived = waitForEvent(socketB, 'memberJoin');
+    // Both counters are attached BEFORE publication: this proves the logical
+    // event is delivered exactly once, not merely that no later duplicate
+    // arrives after a listener was installed post-hoc.
+    const aCount = countSocketEvents(socketA, 'memberJoin');
+    const bCount = countSocketEvents(socketB, 'memberJoin');
+
     ctx.services.eventBus.emit(InviteEvents.MemberJoined, buildCanonicalJoin('guildB'));
+    await sleep(150);
 
-    const [, received] = await Promise.all([noLeak, bReceived]);
-    assert.strictEqual(received.member.username, 'Alice');
-    assert.strictEqual(received.guildId, 'guildB');
-
-    let bCount = 0;
-    socketB.on('memberJoin', () => { bCount += 1; });
-    await sleep(50);
-    assert.strictEqual(bCount, 0, 'guild B must receive exactly one member event (no echo)');
+    assert.strictEqual(aCount.count, 0, 'guild A client must receive zero member events');
+    assert.strictEqual(bCount.count, 1, 'guild B client must receive exactly one member event');
+    bCount.cleanup();
+    aCount.cleanup();
   });
 
   suite.testAsync('leave event for guild B uses the same member contract and stays isolated', async () => {
-    const noLeak = expectNoSocketEvent(socketA, 'memberLeave');
-    const bReceived = waitForEvent(socketB, 'memberLeave');
+    const aCount = countSocketEvents(socketA, 'memberLeave');
+    const bCount = countSocketEvents(socketB, 'memberLeave');
+
     ctx.services.eventBus.emit(InviteEvents.MemberLeft, buildCanonicalLeave('guildB'));
+    await sleep(150);
 
-    const [, received] = await Promise.all([noLeak, bReceived]);
-    assert.strictEqual(received.member.username, 'Bob');
-    assert.strictEqual(received.guildId, 'guildB');
-
-    let bCount = 0;
-    socketB.on('memberLeave', () => { bCount += 1; });
-    await sleep(50);
-    assert.strictEqual(bCount, 0, 'guild B must receive exactly one leave event');
+    assert.strictEqual(aCount.count, 0, 'guild A client must receive zero leave events');
+    assert.strictEqual(bCount.count, 1, 'guild B client must receive exactly one leave event');
+    bCount.cleanup();
+    aCount.cleanup();
   });
 
-  suite.testAsync('invite event for guild B is isolated and carries the invite code', async () => {
-    const noLeak = expectNoSocketEvent(socketA, 'inviteCreated');
-    const bReceived = waitForEvent(socketB, 'inviteCreated');
+  suite.testAsync('invite event for guild B is isolated and delivered exactly once', async () => {
+    const aCount = countSocketEvents(socketA, 'inviteCreated');
+    const bCount = countSocketEvents(socketB, 'inviteCreated');
+
     ctx.services.eventBus.emit(InviteEvents.InviteCreated, {
       guildId: 'guildB',
       invite: { code: 'iso-abc', url: 'https://discord.gg/iso-abc', uses: 0, maxUses: 0, maxAge: 0, temporary: false, inviter: { id: 'u1', username: 'U' }, createdAt: '2026-01-01T00:00:00.000Z', label: null },
       occurredAt: '2026-01-01T00:00:00.000Z',
     });
+    await sleep(150);
 
-    const [, received] = await Promise.all([noLeak, bReceived]);
-    assert.strictEqual(received.invite.code, 'iso-abc');
-
-    let bCount = 0;
-    socketB.on('inviteCreated', () => { bCount += 1; });
-    await sleep(50);
-    assert.strictEqual(bCount, 0, 'guild B must receive exactly one invite event');
+    assert.strictEqual(aCount.count, 0, 'guild A client must receive zero invite events');
+    assert.strictEqual(bCount.count, 1, 'guild B client must receive exactly one invite event');
+    bCount.cleanup();
+    aCount.cleanup();
   });
 
-  suite.testAsync('autoMod execution for guild B is isolated', async () => {
-    const noLeak = expectNoSocketEvent(socketA, 'autoModExecution');
-    const bReceived = waitForEvent(socketB, 'autoModExecution');
+  suite.testAsync('autoMod execution for guild B is isolated and delivered exactly once', async () => {
+    const aCount = countSocketEvents(socketA, 'autoModExecution');
+    const bCount = countSocketEvents(socketB, 'autoModExecution');
+
     ctx.services.eventBus.emit(SafetyEvents.AutoModExecution, {
       guildId: 'guildB',
       guildName: 'Guild B',
@@ -359,14 +363,31 @@ async function runSocketIsolationTests() {
       matchedKeyword: 'x',
       executedAt: '2026-01-01T00:00:00.000Z',
     });
+    await sleep(150);
 
-    const [, received] = await Promise.all([noLeak, bReceived]);
-    assert.strictEqual(received.ruleName, 'Spam Filter');
+    assert.strictEqual(aCount.count, 0, 'guild A client must receive zero autoMod executions');
+    assert.strictEqual(bCount.count, 1, 'guild B client must receive exactly one autoMod execution');
+    bCount.cleanup();
+    aCount.cleanup();
+  });
 
-    let bCount = 0;
-    socketB.on('autoModExecution', () => { bCount += 1; });
-    await sleep(50);
-    assert.strictEqual(bCount, 0, 'guild B must receive exactly one autoMod execution event');
+  suite.testAsync('autoMod rule update for guild B is isolated and delivered exactly once', async () => {
+    const aCount = countSocketEvents(socketA, 'autoModRuleUpdated');
+    const bCount = countSocketEvents(socketB, 'autoModRuleUpdated');
+
+    ctx.services.eventBus.emit(SafetyEvents.AutoModRuleUpdated, {
+      guildId: 'guildB',
+      action: 'update',
+      ruleId: 'r1',
+      name: 'Spam Filter',
+      enabled: true,
+    });
+    await sleep(150);
+
+    assert.strictEqual(aCount.count, 0, 'guild A client must receive zero rule updates');
+    assert.strictEqual(bCount.count, 1, 'guild B client must receive exactly one rule update');
+    bCount.cleanup();
+    aCount.cleanup();
   });
 
   socketA?.close();
@@ -464,6 +485,89 @@ async function runSocketSessionPersistenceTests() {
     assert.strictEqual(persisted.discordOAuth.accessToken, 'refreshed-token', 'refreshed access token must be persisted');
     assert.ok(persisted.discordOAuth.guildPermissionsFetchedAt > 0, 'refreshed permission timestamp must be persisted');
     assert.ok(Array.isArray(persisted.user.discordGuilds), 'refreshed guild snapshot must be persisted');
+
+    socket.close();
+  });
+
+  suite.testAsync('WebSocket transport persists refreshed OAuth material to the session store', async () => {
+    // The one true WebSocket integration test: exercises the socket.io
+    // websocket upgrade path AND proves the OAuth permission refresh performed
+    // during joinGuild authorization is written back to the backing store.
+    const store = new sessionMiddleware.MemoryStore();
+    const mid = sessionMiddleware({
+      name: 'sid',
+      secret: 'socket-ws-test-secret',
+      store,
+      resave: false,
+      saveUninitialized: false,
+    });
+    const app = express();
+    app.use(mid);
+    app.get('/seed', (req, res) => {
+      req.session.user = { id: 'u', discordGuilds: [] };
+      req.session.discordOAuth = {
+        accessToken: 'stale-token',
+        refreshToken: 'ws-refresh-tok',
+        expiresAt: Date.now() - 5 * 60 * 1000,
+        guildPermissionsFetchedAt: Date.now() - 999999,
+      };
+      res.send('ok');
+    });
+
+    server = http.createServer(app);
+    io = new SocketIOServer(server, { cors: { origin: true, credentials: true } });
+    io.engine.use(mid);
+
+    const oauthClient = {
+      async refreshAccessToken() {
+        return { accessToken: 'ws-refreshed-token', refreshToken: 'ws-refresh-tok-2', expiresIn: 3600 };
+      },
+      async fetchGuilds() {
+        return [{ id: 'g', name: 'G', owner: true, permissions: '0' }];
+      },
+    };
+    const permission = new GuildPermissionService({ oauthClient, ttlSeconds: 600 });
+    const guildAccess = new GuildAccessService({
+      guildGateway: { async listGuilds() { return [{ id: 'g', name: 'G', memberCount: 1 }]; } },
+      permissionService: permission,
+      isDemo: false,
+    });
+    new SocketGateway({ io, eventBus: createEventBus(), guildAccess, logger: silentLogger });
+
+    // Count store writes so we can prove the socket path called save() rather
+    // than only asserting the in-memory session object changed.
+    let saveCalls = 0;
+    const origSet = store.set.bind(store);
+    store.set = (sid, session, cb) => {
+      saveCalls += 1;
+      return origSet(sid, session, cb);
+    };
+
+    await new Promise((resolve) => server.listen(0, resolve));
+    baseUrl = `http://localhost:${server.address().port}`;
+
+    const seed = await fetch(`${baseUrl}/seed`);
+    const cookie = seed.headers.get('set-cookie').split(';')[0];
+    const sid = decodeURIComponent(cookie).replace(/^sid=s:/, '').split('.')[0];
+
+    const socket = await connect(baseUrl, cookie, { transports: ['websocket'] });
+    // Reset so only writes triggered by the socket join count.
+    saveCalls = 0;
+    const ack = await emitWithAck(socket, 'joinGuild', 'g');
+    assert.strictEqual(ack.success, true, 'authorization must succeed over the websocket transport');
+
+    // Read the session back from the STORE — what the next request would load.
+    const persisted = await new Promise((resolve, reject) => {
+      store.get(sid, (err, s) => (err ? reject(err) : resolve(s)));
+    });
+    assert.ok(persisted, 'backing session must exist after joinGuild over websocket');
+    assert.strictEqual(persisted.discordOAuth.accessToken, 'ws-refreshed-token', 'refreshed access token must be persisted');
+    assert.strictEqual(persisted.discordOAuth.refreshToken, 'ws-refresh-tok-2', 'refreshed refresh token must be persisted');
+    assert.ok(persisted.discordOAuth.expiresAt > Date.now(), 'refreshed expiry must be persisted');
+    assert.ok(persisted.discordOAuth.guildPermissionsFetchedAt > 0, 'refreshed permission timestamp must be persisted');
+    assert.ok(Array.isArray(persisted.user.discordGuilds), 'refreshed guild snapshot must be persisted');
+    assert.strictEqual(persisted.user.discordGuilds[0].id, 'g', 'guild permission snapshot must be persisted');
+    assert.ok(saveCalls >= 1, 'the refreshed session must be saved back to the store by the socket path');
 
     socket.close();
   });

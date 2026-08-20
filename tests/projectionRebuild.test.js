@@ -53,6 +53,24 @@ async function runProjectionRebuildTests() {
     assert.strictEqual(invites.getInviter('g', 'u').bonus, 4);
   });
 
+  suite.test('bonus adjustment with zero member events rebuilds an inviter whose total reflects only bonus', () => {
+    const db = createTestDb();
+    const { invites } = createRepos(db);
+    invites.addBonus({ guildId: 'g', userId: 'inv', amount: 7, reason: 'legacy bonus' });
+
+    invites.rebuildGuildProjections('g');
+
+    const inviter = invites.getInviter('g', 'inv');
+    assert.strictEqual(inviter.regular, 0, 'no member events means no regular credit');
+    assert.strictEqual(inviter.leaves, 0);
+    assert.strictEqual(inviter.fake, 0);
+    assert.strictEqual(inviter.bonus, 7, 'bonus projection must exist from the adjustment');
+    assert.strictEqual(inviter.total, 7, 'total must reflect the bonus with zero member events');
+    // No member or daily rows are invented for the bonus-only guild.
+    assert.ok(!invites.getCurrentMember('g', 'anything'), 'no member projection invented');
+    assert.deepStrictEqual(invites.getDailyStats('g', 10), []);
+  });
+
   suite.test('rebuild drops inviter rows with no remaining events', () => {
     const db = createTestDb();
     const { invites } = createRepos(db);

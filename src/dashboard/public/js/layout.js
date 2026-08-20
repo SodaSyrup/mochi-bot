@@ -140,7 +140,7 @@
         el('img', { className: 'user-avatar', id: 'user-avatar', src: 'https://cdn.discordapp.com/embed/avatars/0.png', alt: 'Your avatar' }),
         el('span', { className: 'user-name', id: 'user-name' }, ['…']),
       ]),
-      el('a', { className: 'topbar-logout', href: '/auth/logout', title: 'Sign out' }, [
+      el('a', { className: 'topbar-logout', href: '/auth/logout', 'aria-label': 'Sign out', title: 'Sign out' }, [
         el('i', { className: 'fa-solid fa-right-from-bracket', 'aria-hidden': 'true' }),
         el('span', { className: 'logout-label' }, ['Sign out']),
       ]),

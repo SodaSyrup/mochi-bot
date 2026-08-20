@@ -1,6 +1,7 @@
 const { TestSuite, assert } = require('./helpers/harness');
 const { createDatabase } = require('../src/database/createDatabase');
 const { runMigrations } = require('../src/database/migrations');
+const { getGuildIdsWithInviteData } = require('../src/features/invites/infrastructure/projectionGuilds');
 
 const OLD_SCHEMA = `
 CREATE TABLE guilds (
@@ -55,6 +56,24 @@ function createLegacyFixtureDb() {
       ('${g}', 'code1', 'Promo', 'chan_1', 'general');
     INSERT INTO daily_invite_stats (guild_id, date, joins, leaves, fakes) VALUES ('${g}', '2026-01-01', 1, 0, 0);
   `);
+  return db;
+}
+
+// A legacy (pre-migration) database with the old mutable schema and nothing else.
+function createEmptyLegacyDb() {
+  const db = createDatabase({ path: ':memory:' });
+  db.exec(OLD_SCHEMA);
+  return db;
+}
+
+// A database sitting exactly at the boundary where migration 003 will run:
+// baseline (1) + ledger (2) applied, 003/004 not yet.
+function createPreMigration3Db() {
+  const migration1 = require('../src/database/migrations/001-baseline-schema');
+  const migration2 = require('../src/database/migrations/002-invite-ledger');
+  const db = createDatabase({ path: ':memory:' });
+  migration1.up(db);
+  migration2.up(db);
   return db;
 }
 
@@ -255,6 +274,131 @@ async function runMigrationTests() {
       SELECT COUNT(*) c FROM invite_members WHERE inviter_id IN ('VANITY', 'UNKNOWN', 'PRE_EXISTING')
     `).get().c;
     assert.strictEqual(memberSentinels, 0);
+  });
+
+  // ------------------------------------------------ shared guild discovery
+
+  suite.test('getGuildIdsWithInviteData returns each guild exactly once across tables', () => {
+    const db = createPreMigration3Db();
+    const g = 'dupGuild';
+    db.prepare(`INSERT INTO guilds (guild_id, name) VALUES (?, ?)`).run(g, 'Dup Guild');
+    db.prepare(`
+      INSERT INTO invite_events (guild_id, user_id, membership_cycle, event_type, attribution_type, inviter_id, invite_code, is_fake, occurred_at)
+      VALUES (?, ?, 1, 'JOIN', 'INVITE', 'inv', 'c', 0, '2026-01-01T10:00:00Z')
+    `).run(g, 'm1');
+    db.prepare(`INSERT INTO invite_bonus_adjustments (guild_id, user_id, amount, reason) VALUES (?, ?, 1, 'r')`).run(g, 'inv');
+    db.prepare(`
+      INSERT INTO invite_members (guild_id, user_id, inviter_id, invite_code, joined_at, membership_cycle, attribution_type)
+      VALUES (?, ?, 'inv', 'c', '2026-01-01T10:00:00Z', 1, 'INVITE')
+    `).run(g, 'm1');
+    db.prepare(`INSERT INTO inviters (guild_id, user_id, regular) VALUES (?, ?, 1)`).run(g, 'inv');
+    db.prepare(`INSERT INTO daily_invite_stats (guild_id, date, joins) VALUES (?, '2026-01-01', 1)`).run(g);
+
+    const ids = getGuildIdsWithInviteData(db);
+    assert.deepStrictEqual(ids, [g], 'a guild in every source table is returned exactly once');
+  });
+
+  suite.test('getGuildIdsWithInviteData discovers a guild in each single table', () => {
+    const db = createPreMigration3Db();
+    const expectations = [
+      { table: 'invite_events', guild: 'gEvents', insert: (g) => db.prepare(`
+        INSERT INTO invite_events (guild_id, user_id, membership_cycle, event_type, attribution_type, inviter_id, invite_code, is_fake, occurred_at)
+        VALUES (?, ?, 1, 'JOIN', 'INVITE', 'inv', 'c', 0, '2026-01-01T10:00:00Z')
+      `).run(g, 'm1') },
+      { table: 'invite_bonus_adjustments', guild: 'gBonuses', insert: (g) => db.prepare(`INSERT INTO invite_bonus_adjustments (guild_id, user_id, amount, reason) VALUES (?, 'inv', 5, 'r')`).run(g) },
+      { table: 'invite_members', guild: 'gMembers', insert: (g) => db.prepare(`
+        INSERT INTO invite_members (guild_id, user_id, inviter_id, invite_code, joined_at, membership_cycle, attribution_type)
+        VALUES (?, 'm1', 'inv', 'c', '2026-01-01T10:00:00Z', 1, 'INVITE')
+      `).run(g) },
+      { table: 'inviters', guild: 'gInviters', insert: (g) => db.prepare(`INSERT INTO inviters (guild_id, user_id, regular) VALUES (?, 'inv', 2)`).run(g) },
+      { table: 'daily_invite_stats', guild: 'gDaily', insert: (g) => db.prepare(`INSERT INTO daily_invite_stats (guild_id, date, joins) VALUES (?, '2026-01-01', 3)`).run(g) },
+    ];
+    for (const e of expectations) {
+      db.prepare(`INSERT INTO guilds (guild_id, name) VALUES (?, ?)`).run(e.guild, e.guild);
+      e.insert(e.guild);
+    }
+    const ids = new Set(getGuildIdsWithInviteData(db));
+    for (const e of expectations) {
+      assert.ok(ids.has(e.guild), `${e.table}-only guild must be discovered`);
+    }
+  });
+
+  // ------------------------------------------- migration 003 discovery paths
+
+  suite.test('migration 003 rebuilds a guild that exists only in member state', () => {
+    const db = createEmptyLegacyDb();
+    db.exec(`
+      INSERT INTO guilds (guild_id, name) VALUES ('gMember', 'Member Guild');
+      INSERT INTO invite_members (guild_id, user_id, inviter_id, invite_code, joined_at, is_fake, is_left, left_at)
+      VALUES ('gMember', 'm1', 'inv1', 'code1', '2026-01-01T10:00:00Z', 0, 0, NULL);
+    `);
+    runMigrations(db, { silent: true });
+
+    // JOIN synthesized from the member row, then the member projection rebuilt.
+    const member = db.prepare(`
+      SELECT inviter_id, membership_cycle, attribution_type FROM invite_members
+      WHERE guild_id='gMember' AND user_id='m1'
+    `).get();
+    assert.strictEqual(member.inviter_id, 'inv1');
+    assert.strictEqual(member.membership_cycle, 1);
+    assert.strictEqual(member.attribution_type, 'INVITE');
+    const inviter = db.prepare(`SELECT * FROM inviter_stats WHERE guild_id='gMember' AND user_id='inv1'`).get();
+    assert.strictEqual(inviter.regular, 1, 'rebuild must derive the inviter credit for the discovered guild');
+  });
+
+  suite.test('migration 003 discovers and clears a guild that exists only in the inviter projection', () => {
+    const db = createEmptyLegacyDb();
+    db.exec(`
+      INSERT INTO guilds (guild_id, name) VALUES ('gInviter', 'Inviter Guild');
+      INSERT INTO inviters (guild_id, user_id, regular, bonus, leaves, fake)
+      VALUES ('gInviter', 'legacyInv', 3, 0, 0, 0);
+    `);
+    runMigrations(db, { silent: true });
+
+    // No ledger history means the stale aggregate cannot be reconstructed; the
+    // discovered guild is rebuilt/cleared to durable truth.
+    const cleared = db.prepare(`SELECT * FROM inviter_stats WHERE guild_id='gInviter'`).get();
+    assert.ok(!cleared, 'inviter-only guild must be discovered and its stale projection cleared');
+    // The legacy aggregate is archived, never silently destroyed.
+    const archived = db.prepare(`
+      SELECT regular FROM legacy_inviter_stats_snapshot WHERE guild_id='gInviter' AND user_id='legacyInv'
+    `).get();
+    assert.strictEqual(archived.regular, 3);
+  });
+
+  suite.test('migration 003 rebuilds the bonus projection for a bonus-adjustment-only guild', () => {
+    const migration3 = require('../src/database/migrations/003-backfill-invite-ledger');
+    const db = createPreMigration3Db();
+    db.prepare(`INSERT INTO guilds (guild_id, name) VALUES (?, ?)`).run('gBonus', 'Bonus Guild');
+    // A bonus adjustment with no invite_events and no invite_members rows.
+    db.prepare(`INSERT INTO invite_bonus_adjustments (guild_id, user_id, amount, reason) VALUES (?, 'bonusInv', 7, 'manual')`).run('gBonus');
+
+    migration3.up(db);
+
+    const inviter = db.prepare(`SELECT * FROM inviter_stats WHERE guild_id='gBonus' AND user_id='bonusInv'`).get();
+    assert.ok(inviter, 'bonus-only guild must be discovered via the adjustments table');
+    assert.strictEqual(inviter.bonus, 7, 'bonus projection must be rebuilt from the adjustment');
+    assert.strictEqual(inviter.regular, 0);
+    assert.strictEqual(inviter.total, 7, 'total must reflect the bonus with zero member events');
+  });
+
+  suite.test('migration 003 discovers a guild that exists only in legacy daily stats', () => {
+    const db = createEmptyLegacyDb();
+    db.exec(`
+      INSERT INTO guilds (guild_id, name) VALUES ('gDaily', 'Daily Guild');
+      INSERT INTO daily_invite_stats (guild_id, date, joins, leaves, fakes)
+      VALUES ('gDaily', '2026-01-01', 4, 1, 0);
+    `);
+    runMigrations(db, { silent: true });
+
+    // The daily-only guild is discovered; with no ledger it is rebuilt to the
+    // (empty) durable truth, and the pre-rebuild aggregate is archived.
+    const daily = db.prepare(`SELECT * FROM daily_invite_stats WHERE guild_id='gDaily'`).all();
+    assert.strictEqual(daily.length, 0, 'stale daily projection must be cleared by the rebuild');
+    const archived = db.prepare(`
+      SELECT joins, leaves, fakes FROM legacy_daily_invite_stats_snapshot WHERE guild_id='gDaily'
+    `).get();
+    assert.deepStrictEqual([archived.joins, archived.leaves, archived.fakes], [4, 1, 0]);
   });
 
   return suite.run();
