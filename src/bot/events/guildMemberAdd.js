@@ -9,6 +9,15 @@ module.exports = {
     const memberData = mapDiscordMember(member);
     if (!memberData.guildId) return;
 
+    // Bots never enter the human invite ledger. Route them to the invite-log
+    // feature (audit-log attribution + separate bot message) and stop here.
+    if (memberData.bot) {
+      if (services.inviteLogs?.handleBotJoin) {
+        await services.inviteLogs.handleBotJoin(memberData);
+      }
+      return;
+    }
+
     // Same policy used by historical sync and the simulator.
     if (!services.policy.shouldTrackMember(memberData)) return;
 

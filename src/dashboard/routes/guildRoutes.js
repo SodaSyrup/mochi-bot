@@ -23,8 +23,9 @@ function createGuildRoutes({ guildService, guildAccess }) {
   });
 
   router.patch('/:guildId/settings', async (req, res) => {
-    const updated = guildService.updateSettings(req.params.guildId, {
+    const updated = await guildService.updateSettings(req.params.guildId, {
       fake_threshold_days: req.body?.fake_threshold_days,
+      invite_log_channel_id: req.body?.invite_log_channel_id,
     });
     res.json({ success: true, settings: updated });
   });

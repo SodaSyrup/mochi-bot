@@ -29,6 +29,17 @@ async function runFrontendSafetyTests() {
     assert.ok(overviewSrc.includes('escapeHtml(j.username)'));
   });
 
+  suite.test('settings JS inserts channel names only via safe DOM APIs', () => {
+    const settingsSrc = fs.readFileSync(path.join(__dirname, '../src/dashboard/public/js/pages/settings.js'), 'utf8');
+    // Channel names / Discord-controlled strings must never be templated into
+    // innerHTML; options are built with createElement + textContent.
+    assert.ok(!/innerHTML/.test(settingsSrc), 'settings.js must not use innerHTML for Discord-controlled strings');
+    assert.ok(settingsSrc.includes('document.createElement(\'option\')'), 'channel options must use createElement');
+    assert.ok(settingsSrc.includes('opt.textContent'), 'channel names must be set via textContent');
+    assert.ok(settingsSrc.includes('window.Mochi.onGuildChange'), 'settings JS must register guild-change handling');
+    assert.ok(settingsSrc.includes('invite_log_channel_id'), 'settings JS must send invite_log_channel_id');
+  });
+
   suite.test('page scripts load the shared escapeHtml module before use', () => {
     for (const page of ['overview', 'analytics', 'codes', 'leaderboard', 'safety', 'simulator', 'settings']) {
       const html = fs.readFileSync(path.join(__dirname, `../src/dashboard/public/pages/${page}.html`), 'utf8');

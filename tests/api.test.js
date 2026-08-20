@@ -61,6 +61,64 @@ async function runApiTests() {
     assert.strictEqual(data.settings.fake_threshold_days, 14);
   });
 
+  suite.testAsync('PATCH invite_log_channel_id saves a valid guild channel', async () => {
+    const withAuth = { headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie } };
+    const res = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/settings`, {
+      method: 'PATCH',
+      headers: withAuth.headers,
+      body: JSON.stringify({ invite_log_channel_id: 'chan_general' }),
+    });
+    assert.strictEqual(res.status, 200);
+    const data = await res.json();
+    assert.strictEqual(data.settings.invite_log_channel_id, 'chan_general');
+  });
+
+  suite.testAsync('GET guild returns the saved invite_log_channel_id', async () => {
+    const withAuth = { headers: { Cookie: auth.headers.Cookie } };
+    const res = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}`, withAuth);
+    assert.strictEqual(res.status, 200);
+    const data = await res.json();
+    assert.strictEqual(data.settings.invite_log_channel_id, 'chan_general');
+  });
+
+  suite.testAsync('PATCH invite_log_channel_id null disables invite logs', async () => {
+    const withAuth = { headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie } };
+    const res = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/settings`, {
+      method: 'PATCH',
+      headers: withAuth.headers,
+      body: JSON.stringify({ invite_log_channel_id: null }),
+    });
+    assert.strictEqual(res.status, 200);
+    const data = await res.json();
+    assert.strictEqual(data.settings.invite_log_channel_id, null);
+  });
+
+  suite.testAsync('invite_log_channel_id belonging to another/nonexistent guild is rejected with 400 VALIDATION', async () => {
+    const withAuth = { headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie } };
+    const res = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/settings`, {
+      method: 'PATCH',
+      headers: withAuth.headers,
+      body: JSON.stringify({ invite_log_channel_id: 'chan_from_another_guild' }),
+    });
+    assert.strictEqual(res.status, 400);
+    const body = await res.json();
+    assert.strictEqual(body.success, false);
+    assert.strictEqual(body.error.code, 'VALIDATION');
+  });
+
+  suite.testAsync('fake_threshold_days still works alongside invite_log_channel_id', async () => {
+    const withAuth = { headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie } };
+    const res = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/settings`, {
+      method: 'PATCH',
+      headers: withAuth.headers,
+      body: JSON.stringify({ fake_threshold_days: 21, invite_log_channel_id: 'chan_welcome' }),
+    });
+    assert.strictEqual(res.status, 200);
+    const data = await res.json();
+    assert.strictEqual(data.settings.fake_threshold_days, 21);
+    assert.strictEqual(data.settings.invite_log_channel_id, 'chan_welcome');
+  });
+
   suite.testAsync('invite endpoints work (leaderboard, history, activity, analytics, active-codes)', async () => {
     const withAuth = { headers: { Cookie: auth.headers.Cookie } };
 

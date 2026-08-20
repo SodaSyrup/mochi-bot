@@ -7,6 +7,8 @@ const { silentLogger } = require('./helpers/server');
 const { DemoGuildGateway } = require('../src/demo/demoGuildGateway');
 const { DemoInviteGateway } = require('../src/demo/demoInviteGateway');
 const { DemoSafetyGateway } = require('../src/demo/demoSafetyGateway');
+const { DemoInviteLogGateway } = require('../src/demo/demoInviteLogGateway');
+const { DiscordInviteLogGateway } = require('../src/platform/discord/discordInviteLogGateway');
 const { DEMO_GUILD_ID } = require('../src/demo/fixtures');
 
 function buildServices(mode) {
@@ -24,6 +26,7 @@ async function runDemoIsolationTests() {
     assert.ok(services.guildGateway instanceof DemoGuildGateway);
     assert.ok(services.inviteGateway instanceof DemoInviteGateway);
     assert.ok(services.safetyGateway instanceof DemoSafetyGateway);
+    assert.ok(services.inviteLogGateway instanceof DemoInviteLogGateway);
   });
 
   suite.test('development/production modes select Discord gateways, never demo', () => {
@@ -31,6 +34,16 @@ async function runDemoIsolationTests() {
     assert.ok(!(services.guildGateway instanceof DemoGuildGateway));
     assert.ok(!(services.inviteGateway instanceof DemoInviteGateway));
     assert.ok(!(services.safetyGateway instanceof DemoSafetyGateway));
+    assert.ok(services.inviteLogGateway instanceof DiscordInviteLogGateway);
+    assert.ok(!(services.inviteLogGateway instanceof DemoInviteLogGateway));
+  });
+
+  suite.test('demo invite log gateway never touches a Discord client', async () => {
+    const services = buildServices('demo');
+    const ok = await services.inviteLogGateway.sendMessage('g', 'c', 'hello');
+    assert.strictEqual(ok, true);
+    assert.strictEqual(services.inviteLogGateway.sent.length, 1);
+    assert.strictEqual(await services.inviteLogGateway.findRecentBotAdder('g', 'b'), null);
   });
 
   suite.test('live safety operation with no Discord connection errors instead of simulating', async () => {

@@ -14,12 +14,13 @@ const { runDemoIsolationTests } = require('./demoIsolation.test');
 const { runOAuthTests } = require('./oauth.test');
 const { runFrontendSafetyTests } = require('./frontendSafety.test');
 const { runFrontendShellTests } = require('./frontendShell.test');
-const { runFrontendSmokeTests } = require('./frontendSmoke.test');
+const { runFrontendSmokeTests, runFrontendInviteLogTests } = require('./frontendSmoke.test');
 const { runPermissionFreshnessTests } = require('./permissionFreshness.test');
 const { runSafetyTests } = require('./safety.test');
 const { runInviteCacheTests } = require('./inviteCache.test');
 const { runRealtimeContractTests } = require('./realtimeContract.test');
 const { runQueryValidationTests } = require('./queryValidation.test');
+const { runInviteLogTests } = require('./inviteLog.test');
 
 const suites = [
   ['Config & Application Modes', runConfigTests],
@@ -38,6 +39,7 @@ const suites = [
   ['Invite Cache Semantics', runInviteCacheTests],
   ['Realtime Contract', runRealtimeContractTests],
   ['Query Validation', runQueryValidationTests],
+  ['Invite Logs', runInviteLogTests],
   ['Safety Error Handling', runSafetyTests],
   ['Socket.IO Authorization & Isolation', runSocketTests],
   ['Socket.IO Guild Isolation', runSocketIsolationTests],
@@ -47,6 +49,7 @@ const suites = [
   ['Frontend Injection Safety', runFrontendSafetyTests],
   ['Frontend Shell (layout + status)', runFrontendShellTests],
   ['Frontend Shell Smoke (DOM load)', runFrontendSmokeTests],
+  ['Frontend Invite Log Settings', runFrontendInviteLogTests],
 ];
 
 async function runAll() {

@@ -44,6 +44,27 @@
             </div>
           </section>
 
+          <section class="section">
+            <div class="section-header">
+              <div>
+                <h3 class="section-title">Invite logs</h3>
+                <p class="section-description">Post member joins, leaves, and bot activity to a Discord channel.</p>
+              </div>
+            </div>
+            <div class="panel panel-narrow">
+              <form id="invite-log-form" onsubmit="settingsPage.saveInviteLogSettings(event)">
+                <div class="form-group">
+                  <label class="form-label" for="setting-invite-log-channel">Invite log channel</label>
+                  <select id="setting-invite-log-channel" class="form-control" disabled>
+                    <option value="">Disabled</option>
+                  </select>
+                  <div class="form-help">Member joins, leaves, and bot add/remove events will be posted in this channel.</div>
+                </div>
+                <button type="submit" class="button button-primary" id="btn-save-invite-log" disabled>Save changes</button>
+              </form>
+            </div>
+          </section>
+
           <section class="section" id="setup-instructions">
             <div class="section-header">
               <h3 class="section-title">Connecting to Discord</h3>

@@ -16,6 +16,7 @@ const EXPECTED_TABLES = [
   'daily_invite_stats',
   'invite_events',
   'invite_bonus_adjustments',
+  'bot_attributions',
 ];
 
 const EXPECTED_VIEWS = ['inviter_stats'];
@@ -57,15 +58,16 @@ async function runMigrationTests() {
 
   // ------------------------------------------------ clean baseline registry
 
-  suite.test('migration registry is exactly one clean baseline (001)', () => {
-    assert.strictEqual(migrations.length, 1, 'there must be exactly one migration');
-    assert.strictEqual(migrations[0].version, 1);
+  suite.test('migration registry is an append-only history: versions 1 then 2', () => {
+    assert.strictEqual(migrations.length, 2, 'there must be exactly two migrations');
+    assert.deepStrictEqual(migrations.map((m) => m.version), [1, 2], 'versions are ordered 1, 2');
     assert.strictEqual(migrations[0].name, 'initial');
+    assert.strictEqual(migrations[1].name, 'invite-logs');
   });
 
-  // ------------------------------------------ fresh database bootstrap (001)
+  // ------------------------------------------ fresh database bootstrap (001+002)
 
-  suite.test('fresh empty database: migration 001 runs once and creates the complete schema', () => {
+  suite.test('fresh empty database: all migrations run once and create the complete schema', () => {
     const db = createDatabase({ path: ':memory:' });
 
     // schema_migrations does not exist on a truly empty database.
@@ -73,17 +75,29 @@ async function runMigrationTests() {
     assert.ok(!before, 'schema_migrations must be absent on an empty database');
 
     const applied = runMigrations(db, { silent: true });
-    assert.strictEqual(applied, 1, 'exactly one migration applies to a fresh database');
+    assert.strictEqual(applied, 2, 'both migrations apply to a fresh database');
 
-    // Migration metadata records 001.
+    // Migration metadata records 001 and 002 in order.
     const versions = db.prepare('SELECT version, name FROM schema_migrations ORDER BY version').all();
-    assert.deepStrictEqual(versions, [{ version: 1, name: 'initial' }]);
+    assert.deepStrictEqual(versions, [
+      { version: 1, name: 'initial' },
+      { version: 2, name: 'invite-logs' },
+    ]);
 
     // Every current table exists.
     const tables = new Set(objectNames(db, 'table'));
     for (const t of EXPECTED_TABLES) {
-      assert.ok(tables.has(t), `table ${t} must be created by migration 001`);
+      assert.ok(tables.has(t), `table ${t} must be created by the migration history`);
     }
+
+    // guilds carries the invite log channel column.
+    const guildColumns = db.prepare('PRAGMA table_info(guilds)').all().map((c) => c.name);
+    assert.ok(guildColumns.includes('invite_log_channel_id'), 'guilds.invite_log_channel_id must exist');
+
+    // bot_attributions is usable immediately.
+    db.prepare("INSERT INTO bot_attributions (guild_id, bot_user_id) VALUES ('g', 'bot1')").run();
+    const att = db.prepare("SELECT * FROM bot_attributions WHERE guild_id = 'g' AND bot_user_id = 'bot1'").get();
+    assert.strictEqual(att.added_by_user_id, null);
 
     // Current view exists.
     const views = new Set(objectNames(db, 'view'));
@@ -114,11 +128,74 @@ async function runMigrationTests() {
     assert.strictEqual(schemaSignature(db), signature, 'rerunning migrations must not change the schema');
   });
 
-  suite.test('future real migrations can begin at 002', () => {
+  suite.test('upgrade path: applying 002 over a migrated 001 database preserves existing data', () => {
     const db = createDatabase({ path: ':memory:' });
-    runMigrations(db, { silent: true });
-    const maxVersion = db.prepare('SELECT MAX(version) AS v FROM schema_migrations').get().v;
-    assert.strictEqual(maxVersion, 1, 'baseline occupies version 1; the next change is 002');
+    const [m001, m002] = migrations;
+    assert.strictEqual(m001.version, 1);
+    assert.strictEqual(m002.version, 2);
+
+    // Apply/schema-record migration 001 only — simulates an existing database
+    // deployed before the invite-logs feature existed.
+    db.exec(`
+      CREATE TABLE schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    m001.up(db);
+    db.prepare('INSERT INTO schema_migrations (version, name) VALUES (?, ?)').run(1, 'initial');
+
+    // Representative pre-002 guild + invite data.
+    db.prepare("INSERT INTO guilds (guild_id, name, fake_threshold_days) VALUES ('g', 'Old Guild', 7)").run();
+    db.prepare(`
+      INSERT INTO invite_events (guild_id, user_id, membership_cycle, event_type, attribution_type, inviter_id, invite_code, is_fake, occurred_at)
+      VALUES ('g', 'm1', 1, 'JOIN', 'INVITE', 'inv', 'c', 0, '2026-01-01T10:00:00Z')
+    `).run();
+    db.prepare(`
+      INSERT INTO invite_members (guild_id, user_id, inviter_id, invite_code, joined_at, membership_cycle, attribution_type)
+      VALUES ('g', 'm1', 'inv', 'c', '2026-01-01T10:00:00Z', 1, 'INVITE')
+    `).run();
+    db.prepare("INSERT INTO inviters (guild_id, user_id, regular) VALUES ('g', 'inv', 1)").run();
+    db.prepare("INSERT INTO daily_invite_stats (guild_id, date, joins) VALUES ('g', '2026-01-01', 1)").run();
+
+    // Apply pending migrations — only 002 should run.
+    const applied = runMigrations(db, { silent: true });
+    assert.strictEqual(applied, 1, 'only migration 002 applies on an existing 001 database');
+
+    // Old rows survive unchanged.
+    const guild = db.prepare("SELECT * FROM guilds WHERE guild_id = 'g'").get();
+    assert.strictEqual(guild.name, 'Old Guild');
+    assert.strictEqual(guild.fake_threshold_days, 7);
+    assert.strictEqual(guild.invite_log_channel_id, null, 'new column defaults to NULL');
+
+    const member = db.prepare("SELECT * FROM invite_members WHERE guild_id = 'g' AND user_id = 'm1'").get();
+    assert.strictEqual(member.inviter_id, 'inv');
+    assert.strictEqual(member.membership_cycle, 1);
+
+    const inviter = db.prepare("SELECT * FROM inviters WHERE guild_id = 'g' AND user_id = 'inv'").get();
+    assert.strictEqual(inviter.regular, 1);
+
+    const events = db.prepare("SELECT COUNT(*) AS c FROM invite_events WHERE guild_id = 'g'").get();
+    assert.strictEqual(events.c, 1, 'existing lifecycle ledger is preserved');
+
+    // New invite logging structures exist and are usable.
+    const versions = db.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((r) => r.version);
+    assert.deepStrictEqual(versions, [1, 2]);
+
+    const columns = db.prepare('PRAGMA table_info(guilds)').all().map((c) => c.name);
+    assert.ok(columns.includes('invite_log_channel_id'));
+
+    const tables = new Set(objectNames(db, 'table'));
+    assert.ok(tables.has('bot_attributions'), 'bot_attributions must exist after 002');
+
+    db.prepare(`
+      INSERT INTO bot_attributions (guild_id, bot_user_id, added_by_user_id, added_by_username)
+      VALUES ('g', 'bot1', 'inv', 'TopInviter_Sakura')
+    `).run();
+    const att = db.prepare("SELECT * FROM bot_attributions WHERE guild_id = 'g' AND bot_user_id = 'bot1'").get();
+    assert.strictEqual(att.added_by_user_id, 'inv');
+    assert.strictEqual(att.added_by_username, 'TopInviter_Sakura');
   });
 
   // ------------------------------------------- repositories work immediately

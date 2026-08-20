@@ -15,7 +15,7 @@ class GuildRepository {
   }
 
   updateGuild(guildId, settings) {
-    const allowed = ['name', 'icon', 'fake_threshold_days'];
+    const allowed = ['name', 'icon', 'fake_threshold_days', 'invite_log_channel_id'];
     const fields = [];
     const values = [];
 

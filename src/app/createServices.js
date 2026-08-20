@@ -4,14 +4,18 @@ const { InviteService } = require('../features/invites/application/inviteService
 const { createInvitePolicy } = require('../features/invites/domain/invitePolicy');
 const { GuildService } = require('../features/guilds/guildService');
 const { SafetyService } = require('../features/safety/safetyService');
+const { InviteLogRepository } = require('../features/inviteLogs/infrastructure/inviteLogRepository');
+const { InviteLogService } = require('../features/inviteLogs/application/inviteLogService');
 
 const { DiscordInviteGateway } = require('../platform/discord/discordInviteGateway');
 const { DiscordGuildGateway } = require('../platform/discord/discordGuildGateway');
 const { DiscordSafetyGateway } = require('../platform/discord/discordSafetyGateway');
+const { DiscordInviteLogGateway } = require('../platform/discord/discordInviteLogGateway');
 
 const { DemoInviteGateway } = require('../demo/demoInviteGateway');
 const { DemoGuildGateway } = require('../demo/demoGuildGateway');
 const { DemoSafetyGateway } = require('../demo/demoSafetyGateway');
+const { DemoInviteLogGateway } = require('../demo/demoInviteLogGateway');
 
 const { GuildAccessService } = require('../dashboard/auth/guildAccessService');
 const { GuildPermissionService } = require('../dashboard/auth/guildPermissionService');
@@ -25,19 +29,23 @@ const { DiscordOAuthClient } = require('../dashboard/auth/discordOAuthClient');
 function createServices({ config, db, eventBus, client, logger }) {
   const guildRepository = new GuildRepository(db);
   const inviteRepository = new InviteRepository(db);
+  const inviteLogRepository = new InviteLogRepository(db);
 
   let guildGateway;
   let inviteGateway;
   let safetyGateway;
+  let inviteLogGateway;
 
   if (config.app.isDemo) {
     guildGateway = new DemoGuildGateway();
     inviteGateway = new DemoInviteGateway();
     safetyGateway = new DemoSafetyGateway({ eventBus });
+    inviteLogGateway = new DemoInviteLogGateway();
   } else {
     guildGateway = new DiscordGuildGateway({ client, logger });
     inviteGateway = new DiscordInviteGateway({ client, logger });
     safetyGateway = new DiscordSafetyGateway({ client, logger });
+    inviteLogGateway = new DiscordInviteLogGateway({ client, logger });
   }
 
   const policy = createInvitePolicy();
@@ -52,6 +60,13 @@ function createServices({ config, db, eventBus, client, logger }) {
     logger,
   });
   const safety = new SafetyService({ safetyGateway, eventBus, logger });
+  const inviteLogs = new InviteLogService({
+    guildRepository,
+    inviteLogRepository,
+    inviteLogGateway,
+    eventBus,
+    logger,
+  });
 
   const oauthClient = new DiscordOAuthClient({
     clientId: config.bot.clientId,
@@ -76,12 +91,15 @@ function createServices({ config, db, eventBus, client, logger }) {
   return {
     guildRepository,
     inviteRepository,
+    inviteLogRepository,
     guildGateway,
     inviteGateway,
     safetyGateway,
+    inviteLogGateway,
     guilds,
     invites,
     safety,
+    inviteLogs,
     policy,
     guildAccess,
     guildPermissionService,

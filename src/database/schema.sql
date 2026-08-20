@@ -2,9 +2,9 @@
 --
 -- The authoritative schema history is `src/database/migrations/` (versioned,
 -- applied transactionally, recorded in schema_migrations). Migration 001 is the
--- clean baseline and creates everything below in one step. From the first real
--- deployment onward, migrations are append-only: future schema changes come as
--- 002, 003, … and shipped migrations are never rewritten.
+-- clean baseline; migration 002 adds the invite-log channel and bot attribution.
+-- From the first real deployment onward, migrations are append-only: future
+-- schema changes come as 003, 004, … and shipped migrations are never rewritten.
 
 CREATE TABLE schema_migrations (
     version INTEGER PRIMARY KEY,
@@ -17,6 +17,7 @@ CREATE TABLE guilds (
     name TEXT NOT NULL,
     icon TEXT,
     fake_threshold_days INTEGER DEFAULT 7,
+    invite_log_channel_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -102,6 +103,18 @@ CREATE TABLE invite_bonus_adjustments (
     reason TEXT,
     actor_user_id TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Who originally added a bot to a guild. Deliberately OUTSIDE the human invite
+-- ledger so bots never affect invite statistics; the username snapshot survives
+-- the adder leaving the guild. Added by migration 002.
+CREATE TABLE bot_attributions (
+    guild_id TEXT NOT NULL,
+    bot_user_id TEXT NOT NULL,
+    added_by_user_id TEXT,
+    added_by_username TEXT,
+    added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (guild_id, bot_user_id)
 );
 
 -- Single definition of net invites: total = regular + bonus - leaves - fake.

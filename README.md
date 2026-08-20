@@ -5,6 +5,7 @@ A lightweight Discord invite tracking bot with a live web dashboard, built with 
 ## Features
 
 - **Invite tracking**: tracks which invite code was used when a member joins, computes net invites (`regular + bonus - leaves - fake`), flags accounts newer than the configured threshold as fake/suspicious, and handles leaves, vanity URLs, and rejoins.
+- **Invite logs**: post member joins, leaves, and bot add/remove activity to a configurable Discord channel from Dashboard → Settings. Human joins show the inviter and the updated net invite total; bots use separate messages and never count as invites.
 - **Invite campaign labels**: assign custom labels to invite codes (e.g. `twitter-campaign`, `youtube-promo`) via `/invite-label` or the dashboard to track where traffic comes from.
 - **Safety & AutoMod**: view and configure Discord AutoMod rules directly from the dashboard (keyword filters, mention spam, spam presets, member profiles, server verification levels).
 - **Web dashboard**: live event feed over authorized Socket.IO rooms, 7-day join/leave charts, invite code manager, server safety controls, and a built-in simulator for sandbox testing.
@@ -59,6 +60,27 @@ Demo mode uses `data/mochi-demo.sqlite` so demo data never pollutes the live `da
    The dashboard runs at `http://localhost:3000`.
 
 For the sandbox, run with `APP_MODE=demo` (e.g. in `.env`). Demo mode never connects to Discord and uses an isolated demo database.
+
+## Invite Logs
+
+Invite logging is configured per guild from **Dashboard → Settings → Invite logs** (channel picker). When a channel is selected, Mochi posts plain-text logs there for member joins, leaves, and bot add/remove activity.
+
+- **Human joins** show the member, the inviter, and the inviter's updated net invite total (from the canonical `inviter_stats` view — the same number used everywhere else). Suspicious/fake accounts keep their existing counting semantics and are still logged.
+- **Human leaves** show the recorded inviter.
+- **UNKNOWN attribution is never guessed** — joins show "couldn't determine who invited them", leaves show "no recorded inviter".
+- **Vanity joins/leaves** have their own dedicated wording.
+- **Bots use separate `🤖` messages and are never counted as invites.** They never enter `invite_members`, `invite_events`, or inviter totals.
+- **Bot-adder attribution** comes from the Discord audit log and is persisted in `bot_attributions`, so a bot's removal message can still name who originally added it even after a restart.
+- If a log channel is deleted or Mochi lacks permissions, invite processing continues normally; the failure is logged and the channel remains configured until an admin changes it.
+
+### Required Discord permissions
+
+| Feature | Permission |
+| --- | --- |
+| Sending invite logs | `View Channel` + `Send Messages` on the configured channel |
+| Resolving who added a bot | `View Audit Log` (server-level) |
+
+Without `View Audit Log`, bot messages degrade to "I couldn't determine who added it"; human invite logging is unaffected.
 
 ## Invite Semantics
 
@@ -153,7 +175,8 @@ node scripts/rebuild-invite-projections.js --guild <guildId> --dry-run   # previ
 Mochi uses versioned SQLite migrations. Because the project is currently pre-release, the schema history was consolidated into a single clean initial migration instead of a chain of same-day prototype compatibility migrations.
 
 - `001` — the initial baseline: the complete current schema (durable invite ledger, bonus adjustments, projections, statistics view, invite cache/labels, guild settings). It runs once on any empty database.
-- `002+` — future schema changes. There is no legacy migration history: fresh databases start at `001`, and every subsequent real change is simply the next numbered migration.
+- `002` — invite log channel + durable bot attribution: adds `guilds.invite_log_channel_id` and the `bot_attributions` table.
+- `003+` — future schema changes. Migrations are append-only: fresh databases start at `001` and every subsequent real change is simply the next numbered migration.
 
 Existing development databases are disposable during this pre-release stage. After changing the baseline, reset them explicitly (this is a manual developer action, never something the application does at startup):
 

@@ -1,4 +1,4 @@
-const { NotFoundError } = require('../../dashboard/errors');
+const { NotFoundError, ValidationError } = require('../../dashboard/errors');
 
 /**
  * Guild feature service. Owns guild settings persistence (repository) and
@@ -28,9 +28,33 @@ class GuildService {
     };
   }
 
-  updateSettings(guildId, { fake_threshold_days }) {
+  /**
+   * Persist guild settings.
+   *
+   * invite_log_channel_id semantics:
+   *   undefined        -> leave the current value untouched
+   *   null / ''        -> disable invite logging (stores NULL)
+   *   non-empty id     -> must belong to this guild, otherwise ValidationError
+   *
+   * @returns {Promise<object>} the updated guild row
+   */
+  async updateSettings(guildId, { fake_threshold_days, invite_log_channel_id }) {
+    let normalizedChannelId;
+    if (invite_log_channel_id !== undefined) {
+      const trimmed = invite_log_channel_id == null ? '' : String(invite_log_channel_id).trim();
+      normalizedChannelId = trimmed === '' ? null : trimmed;
+      if (normalizedChannelId !== null) {
+        const channels = await this.gateway.fetchChannels(guildId);
+        const belongs = Array.isArray(channels) && channels.some((c) => c.id === normalizedChannelId);
+        if (!belongs) {
+          throw new ValidationError('Invite log channel must belong to this guild.');
+        }
+      }
+    }
+
     const updated = this.guilds.updateGuild(guildId, {
       fake_threshold_days: fake_threshold_days !== undefined ? parseInt(fake_threshold_days, 10) : undefined,
+      invite_log_channel_id: normalizedChannelId,
     });
     return updated;
   }
