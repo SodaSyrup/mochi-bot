@@ -1,5 +1,5 @@
-const { NotFoundError, ExternalServiceError } = require('../../dashboard/errors');
-const { InviteEvents } = require('../../app/eventBus');
+const { AppError, NotFoundError, ExternalServiceError } = require('../../dashboard/errors');
+const { SafetyEvents } = require('../../app/eventBus');
 
 /**
  * Safety feature service. Delegates Discord/AutoMod operations to the safety
@@ -24,9 +24,9 @@ class SafetyService {
       if (!safety) throw new NotFoundError('Guild is not available.');
       return safety;
     } catch (err) {
-      if (err.name === 'AppError') throw err;
+      if (err instanceof AppError) throw err;
       this.logger.error('safety', 'updateSettings', `Failed to update safety settings for guild ${guildId}`, { guildId, error: err });
-      throw new ExternalServiceError(`Failed to update server safety settings: ${err.message}`);
+      throw new ExternalServiceError("Failed to update server safety settings.");
     }
   }
 
@@ -40,12 +40,12 @@ class SafetyService {
     try {
       const rule = await this.gateway.createAutoModRule(guildId, payload);
       if (!rule) throw new NotFoundError('Guild is not available.');
-      this.eventBus.emit(InviteEvents.AutoModRuleUpdated, { guildId, action: 'create', rule });
+      this.eventBus.emit(SafetyEvents.AutoModRuleUpdated, { guildId, action: 'create', rule });
       return rule;
     } catch (err) {
-      if (err.name === 'AppError') throw err;
+      if (err instanceof AppError) throw err;
       this.logger.error('safety', 'createRule', `Failed to create AutoMod rule for guild ${guildId}`, { guildId, error: err });
-      throw new ExternalServiceError(`Failed to create AutoMod rule: ${err.message}`);
+      throw new ExternalServiceError("Failed to create AutoMod rule.");
     }
   }
 
@@ -53,24 +53,24 @@ class SafetyService {
     try {
       const rule = await this.gateway.editAutoModRule(guildId, ruleId, updates);
       if (!rule) throw new NotFoundError('AutoMod rule not found.');
-      this.eventBus.emit(InviteEvents.AutoModRuleUpdated, { guildId, action: 'update', rule });
+      this.eventBus.emit(SafetyEvents.AutoModRuleUpdated, { guildId, action: 'update', rule });
       return rule;
     } catch (err) {
-      if (err.name === 'AppError') throw err;
+      if (err instanceof AppError) throw err;
       this.logger.error('safety', 'updateRule', `Failed to edit AutoMod rule ${ruleId} for guild ${guildId}`, { guildId, error: err });
-      throw new ExternalServiceError(`Failed to edit AutoMod rule: ${err.message}`);
+      throw new ExternalServiceError("Failed to edit AutoMod rule.");
     }
   }
 
   async deleteRule(guildId, ruleId) {
     try {
       await this.gateway.deleteAutoModRule(guildId, ruleId);
-      this.eventBus.emit(InviteEvents.AutoModRuleUpdated, { guildId, action: 'delete', ruleId });
+      this.eventBus.emit(SafetyEvents.AutoModRuleUpdated, { guildId, action: 'delete', ruleId });
       return { ruleId };
     } catch (err) {
-      if (err.name === 'AppError') throw err;
+      if (err instanceof AppError) throw err;
       this.logger.error('safety', 'deleteRule', `Failed to delete AutoMod rule ${ruleId} for guild ${guildId}`, { guildId, error: err });
-      throw new ExternalServiceError(`Failed to delete AutoMod rule: ${err.message}`);
+      throw new ExternalServiceError("Failed to delete AutoMod rule.");
     }
   }
 
@@ -96,13 +96,13 @@ class SafetyService {
       matchedContent: actionData.matchedContent || null,
       executedAt: new Date().toISOString(),
     };
-    this.eventBus.emit(InviteEvents.AutoModExecution, payload);
+    this.eventBus.emit(SafetyEvents.AutoModExecution, payload);
     return payload;
   }
 
   publishRuleUpdated({ guildId, action, ruleId, name = null, enabled = null }) {
     const payload = { guildId, action, ruleId, name, enabled };
-    this.eventBus.emit(InviteEvents.AutoModRuleUpdated, payload);
+    this.eventBus.emit(SafetyEvents.AutoModRuleUpdated, payload);
     return payload;
   }
 
@@ -135,7 +135,7 @@ class SafetyService {
       matchedContent: input.matchedKeyword || null,
       executedAt: new Date().toISOString(),
     };
-    this.eventBus.emit(InviteEvents.AutoModExecution, payload);
+    this.eventBus.emit(SafetyEvents.AutoModExecution, payload);
     return payload;
   }
 }

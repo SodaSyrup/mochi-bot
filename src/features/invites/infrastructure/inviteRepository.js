@@ -495,8 +495,8 @@ class InviteRepository {
 
   // --------------------------------------------------------------- rebuild
 
-  rebuildGuildProjections(guildId) {
-    return rebuildGuildInviteProjections(this.db, guildId);
+  rebuildGuildProjections(guildId, options) {
+    return rebuildGuildInviteProjections(this.db, guildId, options);
   }
 
   countInviteEvents(guildId) {

@@ -1,4 +1,6 @@
-const { InviteEvents } = require('../../app/eventBus');
+const { InviteEvents, SafetyEvents } = require('../../app/eventBus');
+const { mapApplicationEvent } = require('./eventMappers');
+const { UnauthorizedError } = require('../errors');
 
 /**
  * One helper constructs room names so authorization and emission never drift.
@@ -26,12 +28,12 @@ class SocketGateway {
       [InviteEvents.InviteCreated, 'inviteCreated'],
       [InviteEvents.InviteDeleted, 'inviteDeleted'],
       [InviteEvents.LabelUpdated, 'inviteLabelUpdated'],
-      [InviteEvents.AutoModExecution, 'autoModExecution'],
-      [InviteEvents.AutoModRuleUpdated, 'autoModRuleUpdated'],
+      [SafetyEvents.AutoModExecution, 'autoModExecution'],
+      [SafetyEvents.AutoModRuleUpdated, 'autoModRuleUpdated'],
     ]);
 
     for (const [appEvent, socketEvent] of this.forwarders) {
-      this.eventBus.on(appEvent, (data) => this.#forwardGuildEvent(socketEvent, data));
+      this.eventBus.on(appEvent, (data) => this.#forwardGuildEvent(appEvent, socketEvent, data));
     }
 
     this.#wireConnections();
@@ -44,22 +46,19 @@ class SocketGateway {
     });
   }
 
-  #sessionUser(socket) {
-    return socket.request?.session?.user || null;
-  }
-
   #respond(ack, payload) {
     if (typeof ack === 'function') ack(payload);
   }
 
   async #joinGuild(socket, guildId, ack) {
-    const user = this.#sessionUser(socket);
+    const session = socket.request?.session;
+    const user = session?.user;
     if (!user) {
       this.logger.warn('realtime', 'joinGuild', 'Unauthenticated socket rejected', { guildId });
       return this.#respond(ack, { success: false, error: 'UNAUTHORIZED' });
     }
     try {
-      const allowed = await this.guildAccess.canViewGuild(user, guildId);
+      const allowed = await this.guildAccess.canViewGuild(session, guildId);
       if (!allowed) {
         this.logger.warn('realtime', 'joinGuild', 'Unauthorized guild room access denied', { guildId, userId: user.id });
         return this.#respond(ack, { success: false, error: 'FORBIDDEN' });
@@ -67,6 +66,11 @@ class SocketGateway {
       socket.join(guildRoom(guildId));
       this.#respond(ack, { success: true });
     } catch (err) {
+      // A revoked/invalid OAuth authorization must re-authenticate, not be
+      // silently denied as if the guild were simply forbidden.
+      if (err instanceof UnauthorizedError) {
+        return this.#respond(ack, { success: false, error: 'UNAUTHORIZED' });
+      }
       this.#respond(ack, { success: false, error: 'FORBIDDEN' });
     }
   }
@@ -76,9 +80,10 @@ class SocketGateway {
     this.#respond(ack, { success: true });
   }
 
-  #forwardGuildEvent(socketEvent, data) {
+  #forwardGuildEvent(appEvent, socketEvent, data) {
     if (!data || !data.guildId) return;
-    this.io.to(guildRoom(data.guildId)).emit(socketEvent, data);
+    const payload = mapApplicationEvent(appEvent, data);
+    this.io.to(guildRoom(data.guildId)).emit(socketEvent, payload);
   }
 }
 

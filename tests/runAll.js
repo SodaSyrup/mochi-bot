@@ -9,10 +9,15 @@ const { runSerialQueueTests } = require('./guildSerialQueue.test');
 const { runPermissionTests } = require('./permissions.test');
 const { runGuildAccessTests } = require('./guildAccess.test');
 const { runApiTests, runDevelopmentLoginTests } = require('./api.test');
-const { runSocketTests } = require('./socket.test');
+const { runSocketTests, runSocketIsolationTests } = require('./socket.test');
 const { runDemoIsolationTests } = require('./demoIsolation.test');
 const { runOAuthTests } = require('./oauth.test');
 const { runFrontendSafetyTests } = require('./frontendSafety.test');
+const { runPermissionFreshnessTests } = require('./permissionFreshness.test');
+const { runSafetyTests } = require('./safety.test');
+const { runInviteCacheTests } = require('./inviteCache.test');
+const { runRealtimeContractTests } = require('./realtimeContract.test');
+const { runQueryValidationTests } = require('./queryValidation.test');
 
 const suites = [
   ['Config & Application Modes', runConfigTests],
@@ -25,9 +30,15 @@ const suites = [
   ['Guild Serial Queue', runSerialQueueTests],
   ['Discord Permissions & OAuth State', runPermissionTests],
   ['Guild Access Service', runGuildAccessTests],
+  ['Guild Permission Freshness', runPermissionFreshnessTests],
   ['Dashboard HTTP API', runApiTests],
   ['Development Login (no OAuth)', runDevelopmentLoginTests],
+  ['Invite Cache Semantics', runInviteCacheTests],
+  ['Realtime Contract', runRealtimeContractTests],
+  ['Query Validation', runQueryValidationTests],
+  ['Safety Error Handling', runSafetyTests],
   ['Socket.IO Authorization & Isolation', runSocketTests],
+  ['Socket.IO Guild Isolation', runSocketIsolationTests],
   ['Demo / Live Isolation', runDemoIsolationTests],
   ['Discord OAuth', runOAuthTests],
   ['Frontend Injection Safety', runFrontendSafetyTests],

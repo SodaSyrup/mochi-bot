@@ -8,11 +8,18 @@ const LEGACY_BONUS_REASON = 'Legacy bonus imported during invite ledger migratio
 //   - one JOIN event per invite_members row (cycle 1)
 //   - one LEAVE event per departed member (same cycle)
 //   - one bonus adjustment per inviter with a non-zero bonus
-// and then rebuilds inviter/daily projections from the new ledger.
+// then archives the OLD mutable aggregate counters and rebuilds the member,
+// inviter and daily projections from the new ledger.
 //
 // Lost historical rejoin information cannot be recovered; the new ledger
-// becomes the source of truth and any mismatch with the old mutable aggregates
-// is reported rather than silently resolved.
+// becomes the source of truth. The archived legacy snapshot preserves the old
+// aggregate information that the new ledger may not reproduce, and a UNION
+// reconciliation report lists every removed/added/changed inviter row so no
+// difference is silently lost.
+//
+// The migration is idempotent by construction: it only ever runs once because
+// the version table records it, and every insert guards against re-inserting
+// rows that already exist in the ledger.
 
 function hasTable(db, name) {
   const row = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?").get(name);
@@ -115,6 +122,33 @@ module.exports = {
       importedBonuses += 1;
     }
 
+    // Archive the OLD mutable aggregate counters BEFORE rebuilding so that
+    // information the new ledger cannot reproduce is never irreversibly lost.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS legacy_inviter_stats_snapshot (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        regular INTEGER NOT NULL,
+        bonus INTEGER NOT NULL,
+        leaves INTEGER NOT NULL,
+        fake INTEGER NOT NULL,
+        captured_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    const archiveInsert = db.prepare(`
+      INSERT INTO legacy_inviter_stats_snapshot (guild_id, user_id, regular, bonus, leaves, fake)
+      SELECT guild_id, user_id, regular, bonus, leaves, fake FROM inviters
+      WHERE regular != 0 OR bonus != 0 OR leaves != 0 OR fake != 0
+        AND NOT EXISTS (
+          SELECT 1 FROM legacy_inviter_stats_snapshot s
+          WHERE s.guild_id = inviters.guild_id AND s.user_id = inviters.user_id
+            AND s.regular = inviters.regular AND s.bonus = inviters.bonus
+            AND s.leaves = inviters.leaves AND s.fake = inviters.fake
+        )
+    `);
+    const archivedCount = archiveInsert.run().changes;
+
     // Capture old counters for reconciliation before rebuilding from the ledger.
     const oldCounters = db
       .prepare(`
@@ -137,31 +171,50 @@ module.exports = {
         FROM inviters WHERE regular != 0 OR bonus != 0 OR leaves != 0 OR fake != 0
       `)
       .all();
+    const newByKey = new Map(newCounters.map((r) => [`${r.guild_id}:${r.user_id}`, r]));
 
+    // UNION reconciliation: consider both removed old rows and newly created
+    // rows, not just rows that survived the rebuild. This catches "old inviter
+    // existed, new projection has no row" which the old comparison missed.
+    const unionKeys = new Set([...oldByKey.keys(), ...newByKey.keys()]);
     const mismatches = [];
-    for (const row of newCounters) {
-      const key = `${row.guild_id}:${row.user_id}`;
+    const differences = [];
+    let removed = 0;
+    let added = 0;
+
+    for (const key of unionKeys) {
       const old = oldByKey.get(key);
-      if (
+      const next = newByKey.get(key);
+      if (!old && next) {
+        added += 1;
+        differences.push({ key, reason: 'ADDED (only in rebuilt ledger)', before: null, after: next });
+      } else if (old && !next) {
+        removed += 1;
+        differences.push({ key, reason: 'REMOVED (legacy aggregate not reconstructible)', before: old, after: null });
+      } else if (
         old &&
-        (old.regular !== row.regular || old.bonus !== row.bonus ||
-         old.leaves !== row.leaves || old.fake !== row.fake)
+        (old.regular !== next.regular || old.bonus !== next.bonus ||
+         old.leaves !== next.leaves || old.fake !== next.fake)
       ) {
-        mismatches.push({ guild_id: row.guild_id, user_id: row.user_id, before: old, after: row });
+        mismatches.push({ guild_id: next.guild_id, user_id: next.user_id, before: old, after: next });
+        differences.push({ key, reason: 'CHANGED (expected where history is unrecoverable)', before: old, after: next });
       }
     }
 
     console.log(
-      `[Database] Migration 3 backfill: ${joinEvents} join events, ${leaveEvents} leave events, ` +
-      `${importedBonuses} bonus adjustments imported, ${rebuiltGuilds} guilds rebuilt.`
+      `[Database] Migration 3 backfill: imported ${joinEvents} join histories, ${leaveEvents} leave histories, ` +
+      `${importedBonuses} bonus adjustments, rebuilt ${rebuiltGuilds} guilds, archived ${archivedCount} legacy inviter snapshot row(s).`
     );
-    if (mismatches.length > 0) {
+
+    if (differences.length > 0) {
+      const expected = removed + mismatches.length;
       console.warn(
-        `[Database] Migration 3 reconciliation: ${mismatches.length} inviter row(s) differ from the rebuilt ledger ` +
-        `(ledger is now the source of truth).`
+        `[Database] Migration 3 reconciliation: ${expected} expected difference(s) from unrecoverable legacy history ` +
+        `(${removed} removed, ${mismatches.length} changed) and ${added} row(s) newly derived from the ledger. ` +
+        `Old aggregates were archived in legacy_inviter_stats_snapshot; the ledger is now the source of truth.`
       );
-      for (const m of mismatches.slice(0, 5)) {
-        console.warn(`  guild=${m.guild_id} user=${m.user_id} before=${JSON.stringify(m.before)} after=${JSON.stringify(m.after)}`);
+      for (const d of differences.slice(0, 5)) {
+        console.warn(`  ${d.reason}: guild/user=${d.key} before=${JSON.stringify(d.before)} after=${JSON.stringify(d.after)}`);
       }
     }
   },

@@ -136,10 +136,10 @@ class MochiSharedCore {
         ? { text: ' (Suspicious)' }
         : { text: ` (Invited by ${data.inviter?.username || 'Vanity/Unknown'})` };
       const parts = [
-        { b: data.user?.username || 'Unknown' },
+        { b: data.member?.username || 'Unknown' },
         { text: ' joined using ' },
-        { code: data.attribution?.inviteCode || data.code || 'N/A' },
-        data.label ? { text: ' 🏷️ ' + data.label } : null,
+        { code: data.attribution?.inviteCode || data.attribution?.inviterId || 'N/A' },
+        data.attribution?.type === 'VANITY' ? { text: ' (Vanity URL)' } : null,
         inviterText
       ].filter(Boolean);
       this.showToast(parts, data.isFake ? 'leave' : 'join');
@@ -149,17 +149,18 @@ class MochiSharedCore {
 
     this.socket.on('memberLeave', (data) => {
       console.log('[WebSocket] Live Member Leave:', data);
-      this.showToast([{ b: data.user?.username || 'Unknown' }, { text: ' left the server.' }], 'leave');
+      this.showToast([{ b: data.member?.username || 'Unknown' }, { text: ' left the server.' }], 'leave');
       this.fetchStats();
       this.triggerRealtime('memberLeave', data);
     });
 
-    this.socket.on('inviteCreated', (invite) => {
-      console.log('[WebSocket] New Invite Created:', invite);
+    this.socket.on('inviteCreated', (data) => {
+      console.log('[WebSocket] New Invite Created:', data);
+      const invite = data.invite || {};
       const parts = [{ text: 'New invite created: ' }, { code: invite.code || '' }];
       if (invite.label) parts.push({ text: ' (🏷️ ' + invite.label + ')' });
       this.showToast(parts, 'success');
-      this.triggerRealtime('inviteCreated', invite);
+      this.triggerRealtime('inviteCreated', data);
     });
 
     this.socket.on('inviteLabelUpdated', (payload) => {

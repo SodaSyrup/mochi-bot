@@ -168,6 +168,16 @@ async function runInviteServiceTests() {
     assert.strictEqual(res.result.applied, true);
   });
 
+  suite.test('a throwing invite fetch still records the join as UNKNOWN', async () => {
+    const gateway = createFakeInviteGateway();
+    gateway.fetchGuildInvites = async () => { throw new Error('Discord gateway down'); };
+    const { service, repos } = buildService({ gateway });
+    const res = await service.trackMemberJoin(makeMember({ id: 'm', guildId: 'g' }));
+    assert.strictEqual(res.result.applied, true);
+    assert.strictEqual(res.attribution.type, AttributionType.UNKNOWN);
+    assert.strictEqual(repos.invites.countInviteEvents('g'), 1);
+  });
+
   return suite.run();
 }
 

@@ -11,7 +11,7 @@ function createGuildRoutes({ guildService, guildAccess }) {
   const router = express.Router();
 
   router.get('/', requireAuth, async (req, res) => {
-    const guilds = await guildAccess.listManageableGuilds(req.session.user);
+    const guilds = await guildAccess.listManageableGuilds(req.session);
     res.json({ guilds });
   });
 

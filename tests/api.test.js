@@ -243,8 +243,9 @@ async function runApiTests() {
 }
 
 /**
- * Development-mode convenience login: with OAuth credentials missing, a
- * development session should be granted for the bot's connected guilds.
+ * Development-mode convenience login: requires explicit DEV_AUTH_BYPASS=true.
+ * With OAuth credentials missing and the bypass disabled, no admin session may
+ * be created implicitly; only an explicit loopback + bypass grants one.
  */
 async function runDevelopmentLoginTests() {
   const suite = new TestSuite('Development Login (no OAuth)');
@@ -252,7 +253,7 @@ async function runDevelopmentLoginTests() {
   let ctx;
   let baseUrl;
 
-  suite.testAsync('development login without OAuth creates a usable session', async () => {
+  suite.testAsync('development login without DEV_AUTH_BYPASS does NOT create an admin session', async () => {
     const mockClient = {
       user: { username: 'MochiMock', tag: 'MochiMock#0000' },
       guilds: {
@@ -266,11 +267,44 @@ async function runDevelopmentLoginTests() {
       mode: 'development',
       seed: false,
       client: mockClient,
-      env: { CLIENT_ID: '', CLIENT_SECRET: '' }, // force the no-OAuth branch
+      env: { CLIENT_ID: '', CLIENT_SECRET: '', DEV_AUTH_BYPASS: 'false' },
     });
     baseUrl = ctx.baseUrl;
 
-    // login sets a dev session (OAuth is not configured in this env).
+    const login = await fetch(`${baseUrl}/auth/login`, { redirect: 'manual' });
+    assert.strictEqual(login.status, 302);
+    assert.ok(login.headers.get('location').includes('oauth_not_configured'));
+
+    // No session cookie -> no implicit admin anywhere.
+    const user = await fetch(`${baseUrl}/auth/user`);
+    const userData = await user.json();
+    assert.strictEqual(userData.authenticated, false);
+    assert.strictEqual(userData.user, null);
+
+    // Authenticated-only endpoints stay locked.
+    const guilds = await fetch(`${baseUrl}/api/guilds`);
+    assert.strictEqual(guilds.status, 401);
+  });
+
+  suite.testAsync('development login with DEV_AUTH_BYPASS=true on loopback creates a dev session', async () => {
+    const mockClient = {
+      user: { username: 'MochiMock', tag: 'MochiMock#0000' },
+      guilds: {
+        cache: new Map([
+          ['g_alpha', { id: 'g_alpha', name: 'Alpha', memberCount: 50, iconURL: () => null, ownerId: 'o1' }],
+        ]),
+      },
+      isReady: () => true,
+    };
+    await ctx?.server?.close();
+    ctx = await startTestServer({
+      mode: 'development',
+      seed: false,
+      client: mockClient,
+      env: { CLIENT_ID: '', CLIENT_SECRET: '', DEV_AUTH_BYPASS: 'true' },
+    });
+    baseUrl = ctx.baseUrl;
+
     const login = await fetch(`${baseUrl}/auth/login`, { redirect: 'manual' });
     assert.strictEqual(login.status, 302);
     const cookie = login.headers.get('set-cookie')?.split(';')[0];
@@ -297,7 +331,7 @@ async function runDevelopmentLoginTests() {
     const demoLogin = await fetch(`${demo.baseUrl}/auth/login`, { redirect: 'manual' });
     const demoCookie = demoLogin.headers.get('set-cookie')?.split(';')[0];
     const demoUser = await (await fetch(`${demo.baseUrl}/auth/user`, { headers: { Cookie: demoCookie } })).json();
-    assert.strictEqual(demoUser.user.isDev, undefined);
+    assert.strictEqual(demoUser.user.isDev, false);
     assert.strictEqual(demoUser.user.isDemo, true);
     await demo.server.close();
   });

@@ -14,6 +14,7 @@ const { DemoGuildGateway } = require('../demo/demoGuildGateway');
 const { DemoSafetyGateway } = require('../demo/demoSafetyGateway');
 
 const { GuildAccessService } = require('../dashboard/auth/guildAccessService');
+const { GuildPermissionService } = require('../dashboard/auth/guildPermissionService');
 const { DiscordOAuthClient } = require('../dashboard/auth/discordOAuthClient');
 
 /**
@@ -52,16 +53,24 @@ function createServices({ config, db, eventBus, client, logger }) {
   });
   const safety = new SafetyService({ safetyGateway, eventBus, logger });
 
-  const guildAccess = new GuildAccessService({
-    guildGateway,
-    isDemo: config.app.isDemo,
-    isDevelopment: config.app.isDevelopment,
-  });
   const oauthClient = new DiscordOAuthClient({
     clientId: config.bot.clientId,
     clientSecret: config.bot.clientSecret,
     redirectUri: config.dashboard.redirectUri,
     logger,
+  });
+
+  const guildPermissionService = new GuildPermissionService({
+    oauthClient,
+    ttlSeconds: config.auth.permissionTtlSeconds,
+    logger,
+  });
+
+  const guildAccess = new GuildAccessService({
+    guildGateway,
+    permissionService: guildPermissionService,
+    isDemo: config.app.isDemo,
+    isDevelopment: config.app.isDevelopment,
   });
 
   return {
@@ -75,6 +84,7 @@ function createServices({ config, db, eventBus, client, logger }) {
     safety,
     policy,
     guildAccess,
+    guildPermissionService,
     oauthClient,
     eventBus,
     logger,

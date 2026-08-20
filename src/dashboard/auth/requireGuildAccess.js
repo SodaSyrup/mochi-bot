@@ -16,8 +16,8 @@ function requireGuildAccess(guildAccess, { access = 'manage', guildParam = 'guil
 
     try {
       const allowed = access === 'view'
-        ? await guildAccess.canViewGuild(user, guildId)
-        : await guildAccess.canManageGuild(user, guildId);
+        ? await guildAccess.canViewGuild(req.session, guildId)
+        : await guildAccess.canManageGuild(req.session, guildId);
       if (!allowed) throw new ForbiddenError('You do not have permission to access this guild.');
       next();
     } catch (err) {

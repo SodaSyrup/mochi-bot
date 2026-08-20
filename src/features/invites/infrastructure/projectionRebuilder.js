@@ -1,22 +1,40 @@
 const { AttributionType } = require('../domain/attribution');
 
 /**
- * Rebuild a guild's inviter projections and daily analytics from the durable
+ * Rebuild a guild's member, inviter and daily projections from the durable
  * ledger (invite_events + invite_bonus_adjustments).
  *
  * This is the single definition of how projections are derived from history:
- *  - regular: INVITE JOIN events with a real, non-self inviter
- *  - fake:    those same JOIN events classified as suspicious
- *  - leaves:  INVITE LEAVE events with a real, non-self inviter that were not
- *             already excluded by the fake counter (no double penalty)
- *  - bonus:   SUM(invite_bonus_adjustments.amount)
+ *  - invite_members: derived from the LATEST membership cycle per (guild,user).
+ *  - regular:        INVITE JOIN events with a real, non-self inviter
+ *  - fake:           those same JOIN events classified as suspicious
+ *  - leaves:         INVITE LEAVE events with a real, non-self inviter that were
+ *                    not already excluded by the fake counter (no double penalty)
+ *  - bonus:          SUM(invite_bonus_adjustments.amount)
  *  - daily joins/fakes: JOIN events split by fake status; daily leaves count
- *             every literal departure
+ *                    every literal departure
+ *
+ * The whole guild rebuild runs inside ONE transaction: if any validation fails
+ * (malformed ledger) or any write fails, everything rolls back. Projection
+ * rebuilding must not partially succeed.
  */
-function rebuildGuildInviteProjections(db, guildId) {
+
+// Thrown when the ledger is in an impossible state that prevents a truthful
+// rebuild. Carries the offending guild/user/cycle/event so operators can fix it.
+class ProjectionRebuildError extends Error {
+  constructor(guildId, userId, message) {
+    super(`Projection rebuild failed for guild ${guildId}${userId ? `, user ${userId}` : ''}: ${message}`);
+    this.name = 'ProjectionRebuildError';
+    this.guildId = guildId;
+    this.userId = userId;
+  }
+}
+
+function rebuildGuildInviteProjections(db, guildId, { dryRun = false } = {}) {
   const joinRows = db
     .prepare(`
-      SELECT user_id, inviter_id, is_fake, attribution_type
+      SELECT id, user_id, membership_cycle, inviter_id, invite_code, is_fake,
+             attribution_type, occurred_at
       FROM invite_events
       WHERE guild_id = ? AND event_type = 'JOIN'
     `)
@@ -24,7 +42,7 @@ function rebuildGuildInviteProjections(db, guildId) {
 
   const leaveRows = db
     .prepare(`
-      SELECT user_id, inviter_id, is_fake, attribution_type
+      SELECT id, user_id, membership_cycle, inviter_id, is_fake, attribution_type, occurred_at
       FROM invite_events
       WHERE guild_id = ? AND event_type = 'LEAVE'
     `)
@@ -43,6 +61,66 @@ function rebuildGuildInviteProjections(db, guildId) {
       WHERE guild_id = ?
     `)
     .all(guildId);
+
+  // ------------------------------------------------------- derive projections
+
+  // Group JOIN/LEAVE events per user/cycle and derive the current membership.
+  const membersByUser = new Map();
+  for (const row of joinRows) {
+    const cycles = membersByUser.get(row.user_id) || new Map();
+    cycles.set(row.membership_cycle, { join: row, leave: null });
+    membersByUser.set(row.user_id, cycles);
+  }
+  for (const row of leaveRows) {
+    const cycles = membersByUser.get(row.user_id);
+    if (!cycles) {
+      // LEAVE for a user with no JOIN anywhere -> impossible state.
+      throw new ProjectionRebuildError(guildId, row.user_id, `LEAVE (id=${row.id}) without any JOIN`);
+    }
+    const cycle = cycles.get(row.membership_cycle);
+    if (!cycle) {
+      throw new ProjectionRebuildError(guildId, row.user_id, `LEAVE (id=${row.id}) in cycle ${row.membership_cycle} without a JOIN`);
+    }
+    if (cycle.leave) {
+      throw new ProjectionRebuildError(guildId, row.user_id, `duplicate LEAVE in cycle ${row.membership_cycle}`);
+    }
+    cycle.leave = row;
+  }
+
+  const memberProjections = [];
+  for (const [userId, cycles] of membersByUser) {
+    const cycleNumbers = Array.from(cycles.keys()).sort((a, b) => a - b);
+    const max = cycleNumbers[cycleNumbers.length - 1];
+    // Cycles must be a contiguous 1..max sequence (rejoin increments by 1).
+    for (let c = 1; c <= max; c++) {
+      if (!cycles.has(c)) {
+        throw new ProjectionRebuildError(guildId, userId, `membership cycles are not contiguous (missing cycle ${c})`);
+      }
+    }
+
+    for (const c of cycleNumbers) {
+      const { join, leave } = cycles.get(c);
+      if (join.occurred_at > (leave?.occurred_at || '9999-01-01T00:00:00.000Z')) {
+        throw new ProjectionRebuildError(guildId, userId, `LEAVE in cycle ${c} occurs before its JOIN`);
+      }
+    }
+
+    const latest = cycles.get(max);
+    const join = latest.join;
+    const leave = latest.leave;
+    memberProjections.push({
+      guildId,
+      userId,
+      cycle: max,
+      isLeft: Boolean(leave),
+      joinedAt: join.occurred_at,
+      leftAt: leave ? leave.occurred_at : null,
+      attributionType: join.attribution_type || AttributionType.UNKNOWN,
+      inviterId: join.inviter_id ?? null,
+      inviteCode: join.invite_code ?? null,
+      isFake: Boolean(join.is_fake),
+    });
+  }
 
   const counts = new Map();
   const getCounts = (userId) => {
@@ -89,7 +167,39 @@ function rebuildGuildInviteProjections(db, guildId) {
     }
   }
 
+  // --------------------------------------------------- atomically replace rows
+
+  // Dry-run mode computes the diff without writing so operators can preview
+  // exactly what a rebuild would change.
+  if (dryRun) {
+    return buildDryRunDiff(db, guildId, { memberProjections, counts, dayCounts });
+  }
+
   const tx = db.transaction(() => {
+    // invite_members (current membership projection)
+    db.prepare('DELETE FROM invite_members WHERE guild_id = ?').run(guildId);
+    const insertMember = db.prepare(`
+      INSERT INTO invite_members
+        (guild_id, user_id, inviter_id, invite_code, joined_at, is_fake, is_left,
+         left_at, membership_cycle, attribution_type)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const m of memberProjections) {
+      insertMember.run(
+        m.guildId,
+        m.userId,
+        m.inviterId,
+        m.inviteCode,
+        m.joinedAt,
+        m.isFake ? 1 : 0,
+        m.isLeft ? 1 : 0,
+        m.leftAt,
+        m.cycle,
+        m.attributionType
+      );
+    }
+
+    // inviters
     db.prepare('DELETE FROM inviters WHERE guild_id = ?').run(guildId);
     const insertInviter = db.prepare(`
       INSERT INTO inviters (guild_id, user_id, regular, bonus, leaves, fake, updated_at)
@@ -99,6 +209,7 @@ function rebuildGuildInviteProjections(db, guildId) {
       insertInviter.run(guildId, userId, c.regular, c.bonus, c.leaves, c.fake);
     }
 
+    // daily_invite_stats
     db.prepare('DELETE FROM daily_invite_stats WHERE guild_id = ?').run(guildId);
     const insertDaily = db.prepare(`
       INSERT INTO daily_invite_stats (guild_id, date, joins, leaves, fakes)
@@ -110,7 +221,97 @@ function rebuildGuildInviteProjections(db, guildId) {
   });
   tx();
 
-  return { inviters: counts.size, days: dayCounts.size };
+  return { inviters: counts.size, days: dayCounts.size, members: memberProjections.length };
 }
 
-module.exports = { rebuildGuildInviteProjections };
+/**
+ * Compare derived projections against the current rows and report every
+ * difference. Read-only — never writes.
+ */
+function buildDryRunDiff(db, guildId, { memberProjections, counts, dayCounts }) {
+  const differences = [];
+
+  const currentMembers = db
+    .prepare(`
+      SELECT user_id, inviter_id, invite_code, joined_at, is_fake, is_left, left_at,
+             membership_cycle, attribution_type
+      FROM invite_members WHERE guild_id = ?
+    `)
+    .all(guildId);
+  const memberByUser = new Map(currentMembers.map((r) => [r.user_id, r]));
+  for (const m of memberProjections) {
+    const cur = memberByUser.get(m.userId);
+    if (!cur) {
+      differences.push({ table: 'invite_members', user: m.userId, reason: 'MEMBER ADDED' });
+      continue;
+    }
+    if (
+      cur.inviter_id !== m.inviterId ||
+      cur.invite_code !== m.inviteCode ||
+      cur.is_left !== (m.isLeft ? 1 : 0) ||
+      cur.left_at !== m.leftAt ||
+      cur.membership_cycle !== m.cycle ||
+      cur.attribution_type !== m.attributionType ||
+      cur.is_fake !== (m.isFake ? 1 : 0)
+    ) {
+      differences.push({ table: 'invite_members', user: m.userId, reason: 'MEMBER CHANGED' });
+    }
+  }
+  for (const cur of currentMembers) {
+    if (!memberProjections.some((m) => m.userId === cur.user_id)) {
+      differences.push({ table: 'invite_members', user: cur.user_id, reason: 'MEMBER REMOVED' });
+    }
+  }
+
+  const currentInviters = db
+    .prepare(`
+      SELECT user_id, regular, bonus, leaves, fake FROM inviters WHERE guild_id = ?
+    `)
+    .all(guildId);
+  const inviterByUser = new Map(currentInviters.map((r) => [r.user_id, r]));
+  for (const [userId, c] of counts) {
+    const cur = inviterByUser.get(userId);
+    if (!cur) {
+      differences.push({ table: 'inviters', user: userId, reason: 'INVITER ADDED' });
+      continue;
+    }
+    if (cur.regular !== c.regular || cur.bonus !== c.bonus || cur.leaves !== c.leaves || cur.fake !== c.fake) {
+      differences.push({ table: 'inviters', user: userId, reason: 'INVITER CHANGED' });
+    }
+  }
+  for (const cur of currentInviters) {
+    if (!counts.has(cur.user_id)) {
+      differences.push({ table: 'inviters', user: cur.user_id, reason: 'INVITER REMOVED' });
+    }
+  }
+
+  const currentDaily = db
+    .prepare(`SELECT date, joins, leaves, fakes FROM daily_invite_stats WHERE guild_id = ?`)
+    .all(guildId);
+  const dailyByDate = new Map(currentDaily.map((r) => [r.date, r]));
+  for (const [date, d] of dayCounts) {
+    const cur = dailyByDate.get(date);
+    if (!cur) {
+      differences.push({ table: 'daily_invite_stats', user: date, reason: 'DAY ADDED' });
+      continue;
+    }
+    if (cur.joins !== d.joins || cur.leaves !== d.leaves || cur.fakes !== d.fakes) {
+      differences.push({ table: 'daily_invite_stats', user: date, reason: 'DAY CHANGED' });
+    }
+  }
+  for (const cur of currentDaily) {
+    if (!dayCounts.has(cur.date)) {
+      differences.push({ table: 'daily_invite_stats', user: cur.date, reason: 'DAY REMOVED' });
+    }
+  }
+
+  return {
+    inviters: counts.size,
+    days: dayCounts.size,
+    members: memberProjections.length,
+    dryRun: true,
+    differences,
+  };
+}
+
+module.exports = { rebuildGuildInviteProjections, ProjectionRebuildError };

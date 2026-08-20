@@ -122,7 +122,16 @@ class InviteService {
       if (!attribution) {
         const previous = this.invitesCache.get(memberData.guildId);
         const previousVanity = this.vanityCache.get(memberData.guildId);
-        const snapshot = await this.gateway.fetchGuildInvites(memberData.guildId);
+        let snapshot = null;
+        try {
+          snapshot = await this.gateway.fetchGuildInvites(memberData.guildId);
+        } catch (err) {
+          this.#log('invites', 'trackJoin', `Invite fetch threw for guild ${memberData.guildId}; attribution UNKNOWN`, {
+            guildId: memberData.guildId,
+            userId: memberData.id,
+            error: err,
+          });
+        }
 
         if (!snapshot) {
           // Could not fetch invite state — record an explicit UNKNOWN rather
@@ -349,18 +358,34 @@ class InviteService {
 
   /**
    * Active invites: prefer a fresh Discord snapshot, fall back to the
-   * database cache. Enriched with labels.
+   * database cache.
+   *
+   * An empty fresh snapshot is authoritative — Discord successfully reported
+   * zero active invites, so any stale cached entries are cleared. Only a
+   * FAILED fetch (null/exception from the gateway) may fall back to the
+   * persisted cache.
    */
   async getActiveInvites(guildId) {
     const labels = this.invites.getInviteLabels(guildId);
     const labelByCode = new Map(labels.map((l) => [l.code, l]));
 
-    const snapshot = await this.gateway.fetchGuildInvites(guildId);
     let rows;
-    if (snapshot && snapshot.invites.length > 0) {
-      rows = snapshot.invites;
-      this.#storeSnapshot(guildId, snapshot);
-    } else {
+    try {
+      const snapshot = await this.gateway.fetchGuildInvites(guildId);
+      if (snapshot) {
+        // A fresh snapshot — even an EMPTY one — is authoritative and replaces
+        // the persisted cache. Only a failed fetch may fall back below.
+        this.#storeSnapshot(guildId, snapshot);
+        rows = snapshot.invites;
+      } else {
+        rows = this.invites.getCachedInvites(guildId);
+      }
+    } catch (err) {
+      // Gateway unavailable: fall back to the last-known persisted cache.
+      this.#log('invites', 'getActiveInvites', `Invite fetch failed for guild ${guildId}; using cached invites`, {
+        guildId,
+        error: err,
+      });
       rows = this.invites.getCachedInvites(guildId);
     }
 

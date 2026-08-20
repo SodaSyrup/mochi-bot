@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const APP_MODES = Object.freeze(['development', 'demo', 'production']);
 const DEFAULT_SECRET = 'mochi_default_secret_please_change_in_production';
 const DEFAULT_FAKE_THRESHOLD_DAYS = 7;
+const DEFAULT_GUILD_PERMISSION_CACHE_TTL_SECONDS = 600;
 
 function resolveAppMode(env = process.env) {
   const explicit = (env.APP_MODE || '').trim().toLowerCase();
@@ -34,6 +35,17 @@ function buildConfig(env = process.env) {
   const isProduction = mode === 'production';
   const isDemo = mode === 'demo';
   const isDevelopment = mode === 'development';
+
+  const devAuthBypass = env.DEV_AUTH_BYPASS === 'true';
+
+  // The development auth bypass must NEVER be enabled in production. Fail
+  // configuration validation rather than silently ignoring an insecure setting.
+  if (isProduction && devAuthBypass) {
+    throw new Error(
+      '[Config] DEV_AUTH_BYPASS=true is forbidden in APP_MODE=production. ' +
+      'Remove DEV_AUTH_BYPASS before starting in production.'
+    );
+  }
 
   const token = env.DISCORD_TOKEN || '';
   const clientId = env.CLIENT_ID || '';
@@ -78,12 +90,18 @@ function buildConfig(env = process.env) {
   const databasePath = env.DATABASE_PATH || path.join(__dirname, '../data/mochi.sqlite');
   const demoSqlitePath = env.DEMO_DATABASE_PATH || path.join(__dirname, '../data/mochi-demo.sqlite');
 
+  const permissionTtlSeconds = parseInt(
+    env.GUILD_PERMISSION_CACHE_TTL_SECONDS || String(DEFAULT_GUILD_PERMISSION_CACHE_TTL_SECONDS),
+    10
+  );
+
   return {
     app: {
       mode,
       isProduction,
       isDemo,
       isDevelopment,
+      devAuthBypass,
     },
     bot: {
       token,
@@ -108,6 +126,10 @@ function buildConfig(env = process.env) {
         env.FAKE_ACCOUNT_THRESHOLD_DAYS || String(DEFAULT_FAKE_THRESHOLD_DAYS),
         10
       ),
+    },
+    auth: {
+      devAuthBypass,
+      permissionTtlSeconds,
     },
   };
 }

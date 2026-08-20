@@ -102,6 +102,21 @@ CREATE TABLE invite_bonus_adjustments (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Operational archive of the pre-ledger mutable inviter aggregates, captured by
+-- migration 003 BEFORE projections are rebuilt from the ledger. Information the
+-- new event ledger cannot reproduce (e.g. lost rejoin history) is preserved
+-- here instead of being irreversibly destroyed. Not used at runtime.
+CREATE TABLE legacy_inviter_stats_snapshot (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    regular INTEGER NOT NULL,
+    bonus INTEGER NOT NULL,
+    leaves INTEGER NOT NULL,
+    fake INTEGER NOT NULL,
+    captured_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Single definition of net invites: total = regular + bonus - leaves - fake.
 CREATE VIEW inviter_stats AS
 SELECT

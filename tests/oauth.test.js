@@ -1,5 +1,6 @@
 const { TestSuite, assert } = require('./helpers/harness');
 const { DiscordOAuthClient } = require('../src/dashboard/auth/discordOAuthClient');
+const { publicUser, isLoopbackAddress } = require('../src/dashboard/routes/authRoutes');
 const { silentLogger } = require('./helpers/server');
 
 function createMockFetch(routes) {
@@ -46,6 +47,81 @@ async function runOAuthTests() {
     ]);
     const { accessToken } = await client.exchangeCode('code-x');
     assert.strictEqual(accessToken, 'tok123');
+  });
+
+  suite.test('exchangeCode captures refresh_token and expires_in', async () => {
+    const client = makeClient([
+      {
+        match: (u) => u.includes('/oauth2/token'),
+        respond: () => jsonResponse({ access_token: 'tok', refresh_token: 'rt', expires_in: 604800 }),
+      },
+    ]);
+    const { refreshToken, expiresIn } = await client.exchangeCode('code-x');
+    assert.strictEqual(refreshToken, 'rt');
+    assert.strictEqual(expiresIn, 604800);
+  });
+
+  suite.test('refreshAccessToken exchanges a refresh token for a fresh access token', async () => {
+    let seenBody = null;
+    const client = makeClient([
+      {
+        match: (u, o) => u.includes('/oauth2/token') && o.body?.toString().includes('grant_type=refresh_token'),
+        respond: (url, options) => {
+          seenBody = options.body.toString();
+          return jsonResponse({ access_token: 'fresh', refresh_token: 'new-rt', expires_in: 3600 });
+        },
+      },
+    ]);
+    const result = await client.refreshAccessToken('old-rt');
+    assert.strictEqual(result.accessToken, 'fresh');
+    assert.strictEqual(result.refreshToken, 'new-rt');
+    assert.strictEqual(result.expiresIn, 3600);
+    assert.ok(seenBody.includes('refresh_token=old-rt'));
+  });
+
+  suite.test('refreshAccessToken with revoked authorization throws UnauthorizedError', async () => {
+    const { UnauthorizedError } = require('../src/dashboard/errors');
+    const client = makeClient([
+      {
+        match: (u) => u.includes('/oauth2/token'),
+        respond: () => jsonResponse({ error: 'invalid_grant' }, 400),
+      },
+    ]);
+    await assert.rejects(client.refreshAccessToken('revoked'), (err) => err instanceof UnauthorizedError);
+  });
+
+  suite.test('refreshAccessToken without a refresh token fails closed', async () => {
+    const { UnauthorizedError } = require('../src/dashboard/errors');
+    const client = makeClient([]);
+    await assert.rejects(client.refreshAccessToken(null), (err) => err instanceof UnauthorizedError);
+  });
+
+  suite.test('revokeToken best-effort does not throw and sends the token', async () => {
+    let sawToken = null;
+    const client = makeClient([
+      {
+        match: (u, o) => u.includes('/token/revoke'),
+        respond: (url, options) => {
+          sawToken = options.body.toString();
+          return jsonResponse({}, 200);
+        },
+      },
+    ]);
+    await client.revokeToken('tok-to-revoke');
+    assert.ok(sawToken.includes('token=tok-to-revoke'));
+  });
+
+  suite.test('revokeToken swallows network failures', async () => {
+    const client = makeClient([]); // no route -> unexpected fetch throws
+    await client.revokeToken('tok');
+  });
+
+  suite.test('fetchGuilds with a 401 responds with UnauthorizedError', async () => {
+    const { UnauthorizedError } = require('../src/dashboard/errors');
+    const client = makeClient([
+      { match: (u) => u.includes('/users/@me/guilds'), respond: () => jsonResponse({ error: 'unauthorized' }, 401) },
+    ]);
+    await assert.rejects(client.fetchGuilds('bad-token'), (err) => err instanceof UnauthorizedError);
   });
 
   suite.test('exchangeCode throws when Discord rejects', async () => {
@@ -97,6 +173,34 @@ async function runOAuthTests() {
     assert.ok(badState.headers.get('location').includes('invalid_state'));
 
     await ctx.server.close();
+  });
+
+  suite.test('publicUser never exposes OAuth credentials or raw guild snapshots', () => {
+    const out = publicUser({
+      id: 'u1',
+      username: 'TestUser',
+      discriminator: '0',
+      avatar: 'https://example.com/a.png',
+      tag: 'TestUser#0',
+      isDemo: false,
+      isDev: false,
+      discordGuilds: [{ id: 'g', name: 'G' }],
+    });
+    assert.strictEqual(out.username, 'TestUser');
+    assert.ok(!('discordGuilds' in out), 'raw permission snapshot must not leak');
+    assert.ok(!('accessToken' in out) && !('refreshToken' in out));
+    assert.deepStrictEqual(out.isDemo, false);
+  });
+
+  suite.test('isLoopbackAddress accepts only loopback addresses', () => {
+    assert.strictEqual(isLoopbackAddress('127.0.0.1'), true);
+    assert.strictEqual(isLoopbackAddress('::1'), true);
+    assert.strictEqual(isLoopbackAddress('::ffff:127.0.0.1'), true);
+    assert.strictEqual(isLoopbackAddress('127.0.0.2'), true);
+    assert.strictEqual(isLoopbackAddress('10.0.0.5'), false);
+    assert.strictEqual(isLoopbackAddress('192.168.1.10'), false);
+    assert.strictEqual(isLoopbackAddress(''), false);
+    assert.strictEqual(isLoopbackAddress(null), false);
   });
 
   suite.testAsync('login reuses the pending OAuth state across repeated hits', async () => {

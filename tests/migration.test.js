@@ -113,14 +113,71 @@ async function runMigrationTests() {
     assert.ok(daily.length >= 5);
   });
 
+  suite.test('legacy aggregate snapshots are archived before rebuild', () => {
+    const db = createLegacyFixtureDb();
+    runMigrations(db, { silent: true });
+
+    const archived = db.prepare(`
+      SELECT guild_id, user_id, regular, bonus, leaves, fake
+      FROM legacy_inviter_stats_snapshot ORDER BY user_id
+    `).all();
+    // inv1 (5,2,1,1) and inv2 (3,0,0,0) were the pre-rebuild aggregates.
+    assert.strictEqual(archived.length, 2);
+    const byId = Object.fromEntries(archived.map((a) => [a.user_id, a]));
+    assert.deepStrictEqual(
+      [byId['inv1'].regular, byId['inv1'].bonus, byId['inv1'].leaves, byId['inv1'].fake],
+      [5, 2, 1, 1]
+    );
+    assert.deepStrictEqual(
+      [byId['inv2'].regular, byId['inv2'].bonus, byId['inv2'].leaves, byId['inv2'].fake],
+      [3, 0, 0, 0]
+    );
+  });
+
+  suite.test('union reconciliation preserves a removed legacy inviter in the archive', () => {
+    const db = createLegacyFixtureDb();
+    runMigrations(db, { silent: true });
+
+    // inv2 had aggregate counters (regular=3) but no member rows attributed to
+    // it; the rebuilt ledger has no events, so inv2 is REMOVED from the
+    // projection. Its legacy aggregate must still exist in the archive rather
+    // than being silently destroyed.
+    const newInv2 = db.prepare(`SELECT regular FROM inviter_stats WHERE guild_id='guild1' AND user_id='inv2'`).get();
+    assert.ok(!newInv2, 'inv2 has no rebuilt projection row');
+    const archivedInv2 = db.prepare(`
+      SELECT regular FROM legacy_inviter_stats_snapshot WHERE guild_id='guild1' AND user_id='inv2'
+    `).get();
+    assert.strictEqual(archivedInv2.regular, 3);
+  });
+
   suite.test('running migrations twice is a no-op', () => {
     const db = createLegacyFixtureDb();
     runMigrations(db, { silent: true });
     const eventsBefore = db.prepare('SELECT COUNT(*) c FROM invite_events').get().c;
+    const archiveBefore = db.prepare('SELECT COUNT(*) c FROM legacy_inviter_stats_snapshot').get().c;
     const n = runMigrations(db, { silent: true });
     const eventsAfter = db.prepare('SELECT COUNT(*) c FROM invite_events').get().c;
+    const archiveAfter = db.prepare('SELECT COUNT(*) c FROM legacy_inviter_stats_snapshot').get().c;
     assert.strictEqual(n, 0);
     assert.strictEqual(eventsBefore, eventsAfter);
+    assert.strictEqual(archiveBefore, archiveAfter);
+  });
+
+  suite.test('member projection is rebuilt from the ledger by migration', () => {
+    const db = createLegacyFixtureDb();
+    runMigrations(db, { silent: true });
+    // mem_normal: JOIN cycle 1 present. mem_fake: JOIN + LEAVE (left).
+    const normal = db.prepare(`
+      SELECT inviter_id, membership_cycle, is_left FROM invite_members WHERE guild_id='guild1' AND user_id='mem_normal'
+    `).get();
+    assert.strictEqual(normal.inviter_id, 'inv1');
+    assert.strictEqual(normal.membership_cycle, 1);
+    assert.strictEqual(normal.is_left, 0);
+    const fake = db.prepare(`
+      SELECT is_left, is_fake FROM invite_members WHERE guild_id='guild1' AND user_id='mem_fake'
+    `).get();
+    assert.strictEqual(fake.is_left, 1);
+    assert.strictEqual(fake.is_fake, 1);
   });
 
   suite.test('no magic sentinel inviter ids remain after migration', () => {
