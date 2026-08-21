@@ -1,8 +1,8 @@
 const { TestSuite, assert } = require('./helpers/harness');
-const { startTestServer, demoLogin } = require('./helpers/server');
+const { startTestServer, devLogin } = require('./helpers/server');
 const { parseBoundedInt } = require('../src/dashboard/http/parseBoundedInt');
 const { ValidationError } = require('../src/dashboard/errors');
-const { DEMO_GUILD_ID } = require('../src/demo/fixtures');
+const { DEMO_GUILD_ID } = require('./helpers/demo/fixtures');
 
 async function runQueryValidationTests() {
   const suite = new TestSuite('Query & Pagination Validation');
@@ -24,7 +24,7 @@ async function runQueryValidationTests() {
 
   suite.test('malformed/negative/overflow limits never reach SQLite (HTTP 400)', async () => {
     const ctx = await startTestServer();
-    const auth = await demoLogin(ctx.baseUrl);
+    const auth = await devLogin(ctx.baseUrl);
     const url = `${ctx.baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/leaderboard`;
 
     const cases = ['-1', '0', 'abc', '999999', '3.7', 'Infinity'];
@@ -44,7 +44,7 @@ async function runQueryValidationTests() {
 
   suite.test('activity-log offset and limit are validated consistently', async () => {
     const ctx = await startTestServer();
-    const auth = await demoLogin(ctx.baseUrl);
+    const auth = await devLogin(ctx.baseUrl);
     const url = `${ctx.baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/activity-log`;
 
     assert.strictEqual((await fetch(`${url}?offset=-1`, auth)).status, 400);
@@ -61,7 +61,7 @@ async function runQueryValidationTests() {
 
   suite.test('analytics days is bounded (1..90)', async () => {
     const ctx = await startTestServer();
-    const auth = await demoLogin(ctx.baseUrl);
+    const auth = await devLogin(ctx.baseUrl);
     const url = `${ctx.baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/analytics`;
 
     assert.strictEqual((await fetch(`${url}?days=0`, auth)).status, 400);

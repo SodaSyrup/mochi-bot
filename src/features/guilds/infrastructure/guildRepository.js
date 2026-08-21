@@ -1,5 +1,7 @@
+const { DEFAULTS } = require('../../../config/defaults');
+
 class GuildRepository {
-  constructor(db, { defaultFakeThresholdDays = 7 } = {}) {
+  constructor(db, { defaultFakeThresholdDays = DEFAULTS.inviteTracker.fakeAccountThresholdDays } = {}) {
     this.db = db;
     this.defaultFakeThresholdDays = defaultFakeThresholdDays;
   }

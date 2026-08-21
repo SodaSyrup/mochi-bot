@@ -1,8 +1,8 @@
 const { TestSuite, assert } = require('./helpers/harness');
-const { startTestServer, demoLogin } = require('./helpers/server');
+const { startTestServer, devLogin } = require('./helpers/server');
 const { io: createSocketClient } = require('socket.io-client');
 const { InviteEvents, SafetyEvents } = require('../src/app/eventBus');
-const { DEMO_GUILD_ID } = require('../src/demo/fixtures');
+const { DEMO_GUILD_ID } = require('./helpers/demo/fixtures');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -92,7 +92,7 @@ async function runSocketTests() {
   suite.testAsync('server starts and demo login provides a session', async () => {
     ctx = await startTestServer();
     url = ctx.baseUrl;
-    const auth = await demoLogin(url);
+    const auth = await devLogin(url);
     cookie = auth.headers.Cookie;
     assert.ok(cookie);
   });
@@ -459,7 +459,6 @@ async function runSocketSessionPersistenceTests() {
     const guildAccess = new GuildAccessService({
       guildGateway: { async listGuilds() { return [{ id: 'g', name: 'G', memberCount: 1 }]; } },
       permissionService: permission,
-      isDemo: false,
     });
     new SocketGateway({ io, eventBus: createEventBus(), guildAccess, logger: silentLogger });
 
@@ -530,7 +529,6 @@ async function runSocketSessionPersistenceTests() {
     const guildAccess = new GuildAccessService({
       guildGateway: { async listGuilds() { return [{ id: 'g', name: 'G', memberCount: 1 }]; } },
       permissionService: permission,
-      isDemo: false,
     });
     new SocketGateway({ io, eventBus: createEventBus(), guildAccess, logger: silentLogger });
 
@@ -599,7 +597,7 @@ async function runSocketSessionPersistenceTests() {
       // Simulate a guildAccess that replaces the session with a plain object.
       guildAccess: {
         async canViewGuild(session, guildId) {
-          Object.assign(session, { user: { id: 'u', isDemo: true }, save: undefined });
+          Object.assign(session, { user: { id: 'u' }, save: undefined });
           return guildId === 'g';
         },
       },

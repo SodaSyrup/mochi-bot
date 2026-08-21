@@ -55,7 +55,7 @@ async function runPermissionFreshnessTests() {
       guilds: [{ id: 'a', name: 'A', owner: true, permissions: '0' }],
     });
     const perm = new GuildPermissionService({ oauthClient: oauth, clock, ttlSeconds: 600 });
-    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm, isDemo: false });
+    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm });
 
     const session = makeSession({
       fetchedAtMs: clock.now() - 2 * MINUTE, // 2 min ago, TTL 10 min -> fresh
@@ -73,7 +73,7 @@ async function runPermissionFreshnessTests() {
       guilds: [{ id: 'a', name: 'A', owner: true, permissions: '0' }],
     });
     const perm = new GuildPermissionService({ oauthClient: oauth, clock, ttlSeconds: 600 });
-    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm, isDemo: false });
+    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm });
 
     const session = makeSession({
       fetchedAtMs: clock.now() - 20 * MINUTE, // expired
@@ -92,7 +92,7 @@ async function runPermissionFreshnessTests() {
       guilds: [{ id: 'a', name: 'A', owner: false, permissions: '0' }],
     });
     const perm = new GuildPermissionService({ oauthClient: oauth, clock, ttlSeconds: 600 });
-    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm, isDemo: false });
+    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm });
 
     const session = makeSession({
       fetchedAtMs: clock.now() - 20 * MINUTE, // expired so we refresh
@@ -109,7 +109,7 @@ async function runPermissionFreshnessTests() {
       guilds: [{ id: 'b', name: 'B', owner: false, permissions: ADMIN }],
     });
     const perm = new GuildPermissionService({ oauthClient: oauth, clock, ttlSeconds: 600 });
-    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm, isDemo: false });
+    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm });
 
     // Fresh snapshot (2 min ago) that predates the grant for guild B.
     const session = makeSession({
@@ -130,7 +130,7 @@ async function runPermissionFreshnessTests() {
       ],
     });
     const perm = new GuildPermissionService({ oauthClient: oauth, clock, ttlSeconds: 600 });
-    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm, isDemo: false });
+    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm });
 
     // Expired snapshot that predates the grant for guild B.
     const session = makeSession({
@@ -150,7 +150,7 @@ async function runPermissionFreshnessTests() {
     const clock = createFakeClock(Date.now());
     const oauth = makeOAuthClient({ failWith: new UnauthorizedError('revoked') });
     const perm = new GuildPermissionService({ oauthClient: oauth, clock, ttlSeconds: 600 });
-    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm, isDemo: false });
+    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm });
 
     const session = makeSession({
       fetchedAtMs: clock.now() - 20 * MINUTE, // expired -> refresh attempt fails
@@ -164,7 +164,7 @@ async function runPermissionFreshnessTests() {
     const clock = createFakeClock(Date.now());
     const oauth = makeOAuthClient({ failWith: new Error('Discord unreachable') });
     const perm = new GuildPermissionService({ oauthClient: oauth, clock, ttlSeconds: 600 });
-    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm, isDemo: false });
+    const access = new GuildAccessService({ guildGateway: makeGateway(), permissionService: perm });
 
     const session = makeSession({
       fetchedAtMs: clock.now() - 20 * MINUTE,

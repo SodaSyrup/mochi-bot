@@ -1,6 +1,6 @@
 const { TestSuite, assert } = require('./helpers/harness');
-const { startTestServer, demoLogin } = require('./helpers/server');
-const { DEMO_GUILD_ID } = require('../src/demo/fixtures');
+const { startTestServer, devLogin } = require('./helpers/server');
+const { DEMO_GUILD_ID } = require('./helpers/demo/fixtures');
 
 async function runApiTests() {
   const suite = new TestSuite('Dashboard HTTP API');
@@ -33,8 +33,8 @@ async function runApiTests() {
     assert.strictEqual(res.status, 401);
   });
 
-  suite.testAsync('demo login works and guilds list is authorized', async () => {
-    auth = await demoLogin(baseUrl);
+  suite.testAsync('development login works and guilds list is authorized', async () => {
+    auth = await devLogin(baseUrl);
     const res = await fetch(`${baseUrl}/api/guilds`, auth);
     assert.strictEqual(res.status, 200);
     const data = await res.json();
@@ -163,27 +163,6 @@ async function runApiTests() {
     assert.ok(codesData.invites.length >= 1);
   });
 
-  suite.testAsync('simulate join/leave exercise the real use cases', async () => {
-    const withAuth = { headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie } };
-    const join = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/simulate/join`, {
-      method: 'POST',
-      headers: withAuth.headers,
-      body: JSON.stringify({ username: 'ApiTestUser', inviterId: '111111111111111111', inviteCode: 'mochi-welcome' }),
-    });
-    const joinData = await join.json();
-    assert.strictEqual(join.status, 200);
-    assert.strictEqual(joinData.success, true);
-
-    const leave = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/simulate/leave`, {
-      method: 'POST',
-      headers: withAuth.headers,
-      body: JSON.stringify({ userId: joinData.event.user.id }),
-    });
-    const leaveData = await leave.json();
-    assert.strictEqual(leave.status, 200);
-    assert.strictEqual(leaveData.success, true);
-  });
-
   suite.testAsync('channels and roles endpoints work', async () => {
     const withAuth = { headers: { Cookie: auth.headers.Cookie } };
     const ch = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/channels`, withAuth);
@@ -232,10 +211,18 @@ async function runApiTests() {
 
   suite.testAsync('create/label/revoke invite lifecycle', async () => {
     const withAuth = { headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie } };
+    const invalid = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites`, {
+      method: 'POST',
+      headers: withAuth.headers,
+      body: JSON.stringify({ channelId: 'chan_welcome', maxUses: 101 }),
+    });
+    assert.strictEqual(invalid.status, 400);
+    assert.strictEqual((await invalid.json()).error.code, 'VALIDATION');
+
     const created = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites`, {
       method: 'POST',
       headers: withAuth.headers,
-      body: JSON.stringify({ channelId: 'chan_welcome', label: 'API Promo', maxUses: 25 }),
+      body: JSON.stringify({ channelId: 'chan_welcome', label: 'API Promo', maxUses: 100 }),
     });
     const createdData = await created.json();
     assert.strictEqual(created.status, 201);
@@ -305,18 +292,7 @@ async function runApiTests() {
     assert.strictEqual(del.status, 200);
   });
 
-  suite.testAsync('simulate/automod works', async () => {
-    const res = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/simulate/automod`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie },
-      body: JSON.stringify({ ruleName: 'Test', triggerType: 1, actionType: 1, matchedKeyword: 'x' }),
-    });
-    assert.strictEqual(res.status, 200);
-    const data = await res.json();
-    assert.strictEqual(data.success, true);
-  });
-
-  suite.testAsync('member reconciliation works in demo and is idempotent', async () => {
+  suite.testAsync('member reconciliation works and is idempotent', async () => {
     const withAuth = { headers: { Cookie: auth.headers.Cookie } };
     const r1 = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/reconcile-members`, { method: 'POST', headers: withAuth.headers });
     assert.strictEqual(r1.status, 200);
@@ -331,7 +307,7 @@ async function runApiTests() {
   });
 
   suite.testAsync('MPA pages and static assets serve correctly', async () => {
-    for (const path of ['/', '/analytics', '/leaderboard', '/codes', '/safety', '/simulator', '/settings']) {
+    for (const path of ['/', '/analytics', '/leaderboard', '/codes', '/safety', '/settings']) {
       const res = await fetch(`${baseUrl}${path}`);
       assert.strictEqual(res.status, 200, `expected 200 for ${path}`);
     }
@@ -433,17 +409,6 @@ async function runDevelopmentLoginTests() {
 
     const detail = await fetch(`${baseUrl}/api/guilds/g_alpha`, auth);
     assert.strictEqual(detail.status, 200);
-  });
-
-  suite.testAsync('development login must never grant access in demo or production', async () => {
-    // Demo mode: /auth/login sets the DEMO user, not a dev user.
-    const demo = await startTestServer({ mode: 'demo', seed: false });
-    const demoLogin = await fetch(`${demo.baseUrl}/auth/login`, { redirect: 'manual' });
-    const demoCookie = demoLogin.headers.get('set-cookie')?.split(';')[0];
-    const demoUser = await (await fetch(`${demo.baseUrl}/auth/user`, { headers: { Cookie: demoCookie } })).json();
-    assert.strictEqual(demoUser.user.isDev, false);
-    assert.strictEqual(demoUser.user.isDemo, true);
-    await demo.server.close();
   });
 
   await ctx?.server?.close();

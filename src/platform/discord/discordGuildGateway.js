@@ -19,7 +19,6 @@ class DiscordGuildGateway {
       icon: g.iconURL?.({ dynamic: true }) || null,
       memberCount: g.memberCount || 0,
       ownerId: g.ownerId || null,
-      isSimulated: false,
     }));
   }
 
@@ -32,7 +31,6 @@ class DiscordGuildGateway {
       icon: g.iconURL?.({ dynamic: true }) || null,
       memberCount: g.memberCount || 0,
       ownerId: g.ownerId || null,
-      isSimulated: false,
     };
   }
 

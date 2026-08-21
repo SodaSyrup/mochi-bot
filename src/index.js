@@ -22,9 +22,9 @@ async function bootstrap() {
 
   await dashboard.start(config.dashboard.port);
 
-  // Connect to Discord only when live credentials exist. Demo mode never
-  // connects. Production MUST connect — a failure there is fatal.
-  if (!config.app.isDemo && config.bot.token) {
+  // Connect to Discord when credentials exist. Production MUST connect — a
+  // failure there is fatal.
+  if (config.bot.token) {
     try {
       logger.info('bot', 'login', 'Connecting to Discord Gateway...');
       await client.login(config.bot.token);
@@ -35,8 +35,6 @@ async function bootstrap() {
       }
       logger.warn('bot', 'login', 'Continuing in development mode without a live Discord connection.');
     }
-  } else if (config.app.isDemo) {
-    logger.info('bot', 'login', 'Running in explicit demo mode (no Discord connection).');
   }
 }
 

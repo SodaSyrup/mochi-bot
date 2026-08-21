@@ -1,5 +1,6 @@
 const { PermissionFlagsBits } = require('discord.js');
 const { buildHoneypotEmbed } = require('../../bot/services/honeypotBanner');
+const { DEFAULTS } = require('../../config/defaults');
 
 /** Discord adapter for honeypot channel banners and softbans. */
 class DiscordHoneypotGateway {
@@ -88,7 +89,7 @@ class DiscordHoneypotGateway {
 
     const reason = 'Honeypot triggered: message sent in the protected channel';
     await guild.members.ban(message.author.id, {
-      deleteMessageSeconds: 86400,
+      deleteMessageSeconds: DEFAULTS.honeypot.softBanDeleteMessageSeconds,
       reason,
     });
 

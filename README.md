@@ -9,7 +9,7 @@ A lightweight Discord invite tracking bot with a live web dashboard, built for B
 - **Invite campaign labels**: assign custom labels to invite codes (e.g. `twitter-campaign`, `youtube-promo`) via `/invite-label` or the dashboard to track where traffic comes from.
 - **Safety & AutoMod**: view and configure Discord AutoMod rules directly from the dashboard (keyword filters, mention spam, spam presets, member profiles, server verification levels).
 - **Honeypot moderation**: assign a Discord channel where messages trigger a softban and maintain a persistent in-channel kick counter.
-- **Web dashboard**: live event feed over authorized Socket.IO rooms, 7-day join/leave charts, invite code manager, server safety controls, and a built-in simulator for sandbox testing.
+- **Web dashboard**: live event feed over authorized Socket.IO rooms, 7-day join/leave charts, invite code manager, and server safety controls.
 - **Secure by default**: Discord OAuth with state validation, per-guild authorization, authenticated Socket.IO, and no global guild broadcasts.
 - **Fast & light**: uses Bun's native `bun:sqlite` driver with WAL mode for fast local storage.
 
@@ -19,11 +19,8 @@ The application runs in exactly one explicit mode, selected by `APP_MODE`:
 
 | Mode | Behavior |
 | --- | --- |
-| `development` | May connect to live Discord if credentials exist. Never silently becomes demo. |
-| `demo` | Sandbox mode: explicit demo gateways/fixtures and an isolated demo database. |
+| `development` | May connect to live Discord if credentials exist. Development auth bypass is available only with explicit opt-in. |
 | `production` | Requires `DISCORD_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET`, a unique `SESSION_SECRET` and valid dashboard URLs; fails startup otherwise. |
-
-Demo mode uses `data/mochi-demo.sqlite` so demo data never pollutes the live `data/mochi.sqlite`.
 
 ## Setup
 
@@ -62,8 +59,6 @@ Demo mode uses `data/mochi-demo.sqlite` so demo data never pollutes the live `da
    bun dev
    ```
    The dashboard runs at `http://localhost:3000`.
-
-For the sandbox, run with `APP_MODE=demo` (e.g. in `.env`). Demo mode never connects to Discord and uses an isolated demo database.
 
 ### Run with PM2
 
@@ -178,7 +173,7 @@ Socket.IO forwards canonical application events to authorized guild rooms throug
 - The dashboard requires Discord OAuth2 login (`identify guilds`).
 - OAuth login uses a cryptographically random `state` value stored in the session and validated on callback.
 - Only guilds you can manage **and** that Mochi is a member of are listed/accessible; per-guild routes return `403` otherwise. Guild owners are recognized dynamically from Discord for each server, so no global owner ID is required.
-- **Development auth bypass:** there is **no implicit admin**. When `APP_MODE=development` **and** `DEV_AUTH_BYPASS=true` **and** the request is loopback-only, `/auth/login` may establish a clearly-logged "Development Admin" session without OAuth. With the bypass disabled (the default), missing OAuth configuration means login is simply unavailable — no automatic admin is created. `DEV_AUTH_BYPASS=true` is **forbidden in production**: the application refuses to start. Demo has its own demo identity and is unaffected.
+- **Development auth bypass:** there is **no implicit admin**. When `APP_MODE=development` **and** `DEV_AUTH_BYPASS=true` **and** the request is loopback-only, `/auth/login` may establish a clearly-logged "Development Admin" session without OAuth. With the bypass disabled (the default), missing OAuth configuration means login is simply unavailable — no automatic admin is created. `DEV_AUTH_BYPASS=true` is **forbidden in production**: the application refuses to start.
 - **Guild authorization freshness:** guild-management permissions are fetched from Discord at login and cached in the session. They are NOT trusted for the entire session lifetime — the snapshot expires after `GUILD_PERMISSION_CACHE_TTL_SECONDS` (default 600s) and is refreshed from Discord before protected operations continue. A revoked or invalid OAuth authorization fails closed with `401` (re-login) rather than reusing stale permission data.
 - **Sessions:** OAuth access/refresh tokens live only server-side in the session (`session.discordOAuth`) for refresh support. They are never sent to browser JavaScript, never returned in API JSON, and never logged. `/auth/user` returns only safe public user fields.
 - All `/api/guilds/**` endpoints require authentication and per-guild authorization. `/api/stats` (non-sensitive global telemetry) and `/api/health` are intentionally public for operational health checks; everything else under `/api` is protected.
@@ -212,7 +207,6 @@ Development databases are disposable while the bot is being built. Reset them ex
 
 ```bash
 rm data/mochi.sqlite
-rm data/mochi-demo.sqlite
 ```
 
 Then start Mochi normally and migration `001` creates the complete clean database.
@@ -263,7 +257,6 @@ The bot needs `View Channel`, `Send Messages`, `Embed Links`, and `Ban Members` 
 - `/safety` — Discord AutoMod rules and server security settings
 - `/honeypot` — Configure the decoy channel and view its softban counter
 - `/settings` — Bot connection status and application configuration
-- `/simulator` — Sandbox test bench to simulate member joins, leaves, and AutoMod triggers
 
 ## Testing
 

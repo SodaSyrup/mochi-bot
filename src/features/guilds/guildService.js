@@ -5,9 +5,10 @@ const { NotFoundError, ValidationError } = require('../../dashboard/errors');
  * guild listing/channel/role reads (gateway).
  */
 class GuildService {
-  constructor({ guildRepository, guildGateway }) {
+  constructor({ guildRepository, guildGateway, maxFakeThresholdDays = 365 }) {
     this.guilds = guildRepository;
     this.gateway = guildGateway;
+    this.maxFakeThresholdDays = maxFakeThresholdDays;
   }
 
   async getGuild(guildId) {
@@ -55,8 +56,8 @@ class GuildService {
     let normalizedThreshold;
     if (fake_threshold_days !== undefined) {
       normalizedThreshold = Number(fake_threshold_days);
-      if (!Number.isInteger(normalizedThreshold) || normalizedThreshold < 0 || normalizedThreshold > 365) {
-        throw new ValidationError('fake_threshold_days must be an integer between 0 and 365.');
+      if (!Number.isInteger(normalizedThreshold) || normalizedThreshold < 0 || normalizedThreshold > this.maxFakeThresholdDays) {
+        throw new ValidationError(`fake_threshold_days must be an integer between 0 and ${this.maxFakeThresholdDays}.`);
       }
     }
 

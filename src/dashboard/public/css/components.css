@@ -133,12 +133,12 @@
 
 .button-primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 .button-primary:hover:not(:disabled) {
   background: var(--accent-hover);
-  color: #fff;
+  color: var(--text-on-accent);
   text-decoration: none;
 }
 
@@ -168,12 +168,12 @@
 
 .button-danger-solid {
   background: var(--danger);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 .button-danger-solid:hover:not(:disabled) {
-  background: #c74440;
-  color: #fff;
+  background: var(--danger-hover);
+  color: var(--text-on-accent);
   text-decoration: none;
 }
 
@@ -375,7 +375,7 @@ select.form-control[multiple] {
 
 .switch-toggle input:checked + .slider::before {
   transform: translateX(18px);
-  background: #fff;
+  background: var(--text-on-accent);
 }
 
 .switch-toggle input:focus-visible + .slider {
@@ -520,25 +520,25 @@ select.form-control[multiple] {
 .badge-success {
   background: rgba(59, 165, 93, 0.14);
   border-color: rgba(59, 165, 93, 0.35);
-  color: #57b87a;
+  color: var(--success-text);
 }
 
 .badge-warning {
   background: rgba(217, 164, 65, 0.14);
   border-color: rgba(217, 164, 65, 0.35);
-  color: #d9a441;
+  color: var(--warning-text);
 }
 
 .badge-danger {
   background: rgba(217, 83, 79, 0.14);
   border-color: rgba(217, 83, 79, 0.35);
-  color: #e06964;
+  color: var(--danger-text);
 }
 
 .badge-info {
   background: rgba(88, 101, 242, 0.14);
   border-color: rgba(88, 101, 242, 0.35);
-  color: #8b94ff;
+  color: var(--info-text);
 }
 
 /* --------------------------------------------------------------- statuses */
@@ -559,7 +559,6 @@ select.form-control[multiple] {
 }
 
 .status-connected .status-dot { background: var(--success); }
-.status-demo .status-dot { background: var(--warning); }
 .status-disconnected .status-dot { background: var(--danger); }
 
 /* ------------------------------------------------------------------ tabs */

@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const config = require('../../config');
+const { BOT_COLORS } = require('../theme');
 
 class MochiEmbedBuilder {
   /**
@@ -7,7 +8,7 @@ class MochiEmbedBuilder {
    */
   base(options = {}) {
     const embed = new EmbedBuilder()
-      .setColor(options.color || config.bot.embedColor || '#7c3aed')
+      .setColor(options.color || config.bot.embedColor)
       .setTimestamp();
 
     if (options.title) embed.setTitle(options.title);
@@ -30,7 +31,7 @@ class MochiEmbedBuilder {
 
   success(title, description) {
     return this.base({
-      color: '#10b981',
+      color: BOT_COLORS.success,
       title: `✅ ${title}`,
       description
     });
@@ -38,7 +39,7 @@ class MochiEmbedBuilder {
 
   error(title, description) {
     return this.base({
-      color: '#ef4444',
+      color: BOT_COLORS.error,
       title: `❌ ${title}`,
       description
     });
@@ -46,7 +47,7 @@ class MochiEmbedBuilder {
 
   warn(title, description) {
     return this.base({
-      color: '#f59e0b',
+      color: BOT_COLORS.warning,
       title: `⚠️ ${title}`,
       description
     });
@@ -54,7 +55,7 @@ class MochiEmbedBuilder {
 
   info(title, description) {
     return this.base({
-      color: '#3b82f6',
+      color: BOT_COLORS.info,
       title: `ℹ️ ${title}`,
       description
     });

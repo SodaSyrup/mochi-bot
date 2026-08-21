@@ -1,4 +1,4 @@
-const { buildHoneypotEmbed } = require('../bot/services/honeypotBanner');
+const { buildHoneypotEmbed } = require('../../../src/bot/services/honeypotBanner');
 
 /** No-op gateway that keeps the demo composition root feature-complete. */
 class DemoHoneypotGateway {
@@ -38,3 +38,4 @@ class DemoHoneypotGateway {
 }
 
 module.exports = { DemoHoneypotGateway };
+

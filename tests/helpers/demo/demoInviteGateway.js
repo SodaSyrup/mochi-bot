@@ -82,3 +82,4 @@ class DemoInviteGateway {
 }
 
 module.exports = { DemoInviteGateway };
+

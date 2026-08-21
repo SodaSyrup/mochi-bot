@@ -135,7 +135,6 @@ aside.sidebar {
 }
 
 .sidebar-status[data-status="connected"] .status-dot { background: var(--success); }
-.sidebar-status[data-status="demo"] .status-dot { background: var(--warning); }
 .sidebar-status[data-status="disconnected"] .status-dot { background: var(--danger); }
 
 /* ----------------------------------------------------------------- topbar */

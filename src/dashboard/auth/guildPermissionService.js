@@ -1,6 +1,7 @@
 const { UnauthorizedError } = require('../errors');
+const { DEFAULTS } = require('../../config/defaults');
 
-const DEFAULT_TTL_SECONDS = 600;
+const DEFAULT_TTL_SECONDS = DEFAULTS.auth.permissionTtlSeconds;
 const TOKEN_EXPIRY_SKEW_MS = 60 * 1000; // refresh when the access token is within 60s of expiry
 
 /**

@@ -1,3 +1,5 @@
+const AUTO_MOD = window.MochiConstants.autoMod;
+
 /**
  * Mochi Discord Safety & AutoMod Client Controller
  */
@@ -205,16 +207,16 @@ class SafetyPage {
     if (countAll) countAll.textContent = total;
 
     const countKw = document.getElementById('count-filter-keyword');
-    if (countKw) countKw.textContent = this.rules.filter(r => r.triggerType === 1 || r.triggerType === 6).length;
+    if (countKw) countKw.textContent = this.rules.filter(r => r.triggerType === AUTO_MOD.triggerKeyword || r.triggerType === AUTO_MOD.triggerMemberProfile).length;
 
     const countSpam = document.getElementById('count-filter-spam');
-    if (countSpam) countSpam.textContent = this.rules.filter(r => r.triggerType === 3).length;
+    if (countSpam) countSpam.textContent = this.rules.filter(r => r.triggerType === AUTO_MOD.triggerSpam).length;
 
     const countMention = document.getElementById('count-filter-mention');
-    if (countMention) countMention.textContent = this.rules.filter(r => r.triggerType === 5).length;
+    if (countMention) countMention.textContent = this.rules.filter(r => r.triggerType === AUTO_MOD.triggerMentionSpam).length;
 
     const countPreset = document.getElementById('count-filter-preset');
-    if (countPreset) countPreset.textContent = this.rules.filter(r => r.triggerType === 4).length;
+    if (countPreset) countPreset.textContent = this.rules.filter(r => r.triggerType === AUTO_MOD.triggerKeywordPreset).length;
   }
 
   filterRules(type, btn) {
@@ -226,11 +228,11 @@ class SafetyPage {
 
   triggerLabel(type) {
     const labels = {
-      1: 'Keywords',
-      3: 'Spam',
-      4: 'Presets',
-      5: 'Mentions',
-      6: 'Member profile'
+      [AUTO_MOD.triggerKeyword]: 'Keywords',
+      [AUTO_MOD.triggerSpam]: 'Spam',
+      [AUTO_MOD.triggerKeywordPreset]: 'Presets',
+      [AUTO_MOD.triggerMentionSpam]: 'Mentions',
+      [AUTO_MOD.triggerMemberProfile]: 'Member profile'
     };
     return labels[type] || 'Custom';
   }
@@ -241,13 +243,13 @@ class SafetyPage {
 
     let filtered = this.rules;
     if (this.currentFilter === 'keyword') {
-      filtered = this.rules.filter(r => r.triggerType === 1 || r.triggerType === 6);
+      filtered = this.rules.filter(r => r.triggerType === AUTO_MOD.triggerKeyword || r.triggerType === AUTO_MOD.triggerMemberProfile);
     } else if (this.currentFilter === 'spam') {
-      filtered = this.rules.filter(r => r.triggerType === 3);
+      filtered = this.rules.filter(r => r.triggerType === AUTO_MOD.triggerSpam);
     } else if (this.currentFilter === 'mention') {
-      filtered = this.rules.filter(r => r.triggerType === 5);
+      filtered = this.rules.filter(r => r.triggerType === AUTO_MOD.triggerMentionSpam);
     } else if (this.currentFilter === 'preset') {
-      filtered = this.rules.filter(r => r.triggerType === 4);
+      filtered = this.rules.filter(r => r.triggerType === AUTO_MOD.triggerKeywordPreset);
     }
 
     if (filtered.length === 0) {
@@ -261,10 +263,10 @@ class SafetyPage {
 
     container.innerHTML = filtered.map(rule => {
       const actionsList = rule.actions || [];
-      const hasBlock = actionsList.some(a => a.type === 1);
-      const hasAlert = actionsList.some(a => a.type === 2);
-      const hasTimeout = actionsList.some(a => a.type === 3);
-      const hasBlockProfile = actionsList.some(a => a.type === 4);
+      const hasBlock = actionsList.some(a => a.type === AUTO_MOD.actionBlockMessage);
+      const hasAlert = actionsList.some(a => a.type === AUTO_MOD.actionAlert);
+      const hasTimeout = actionsList.some(a => a.type === AUTO_MOD.actionTimeout);
+      const hasBlockProfile = actionsList.some(a => a.type === AUTO_MOD.actionBlockProfile);
 
       const actionLabels = [];
       if (hasBlock) actionLabels.push('Block message');
@@ -369,8 +371,8 @@ class SafetyPage {
     document.getElementById('rule-edit-id').value = '';
     document.getElementById('rule-modal-title').textContent = 'Create AutoMod rule';
     document.getElementById('rule-name').value = '';
-    document.getElementById('rule-trigger-type').value = '1';
-    this.onTriggerTypeChange('1');
+    document.getElementById('rule-trigger-type').value = String(AUTO_MOD.triggerKeyword);
+    this.onTriggerTypeChange(String(AUTO_MOD.triggerKeyword));
 
     document.getElementById('rule-keywords').value = '';
     document.getElementById('rule-regex').value = '';
@@ -380,7 +382,7 @@ class SafetyPage {
     document.getElementById('preset-sexual').checked = true;
     document.getElementById('preset-slurs').checked = true;
 
-    document.getElementById('rule-mention-limit').value = 5;
+    document.getElementById('rule-mention-limit').value = AUTO_MOD.defaultMentionLimit;
 
     document.getElementById('action-block').checked = true;
     this.toggleActionBlock(true);
@@ -413,23 +415,23 @@ class SafetyPage {
     document.getElementById('rule-trigger-type').value = rule.triggerType;
     this.onTriggerTypeChange(rule.triggerType);
 
-    if (rule.triggerType === 1 || rule.triggerType === 6) {
+    if (rule.triggerType === AUTO_MOD.triggerKeyword || rule.triggerType === AUTO_MOD.triggerMemberProfile) {
       document.getElementById('rule-keywords').value = (rule.triggerMetadata?.keywordFilter || []).join(', ');
       document.getElementById('rule-regex').value = (rule.triggerMetadata?.regexPatterns || []).join('\n');
       document.getElementById('rule-allowlist').value = (rule.triggerMetadata?.allowList || []).join(', ');
-    } else if (rule.triggerType === 4) {
+    } else if (rule.triggerType === AUTO_MOD.triggerKeywordPreset) {
       const presets = rule.triggerMetadata?.presets || [];
-      document.getElementById('preset-profanity').checked = presets.includes(1);
-      document.getElementById('preset-sexual').checked = presets.includes(2);
-      document.getElementById('preset-slurs').checked = presets.includes(3);
-    } else if (rule.triggerType === 5) {
-      document.getElementById('rule-mention-limit').value = rule.triggerMetadata?.mentionTotalLimit || 5;
+      document.getElementById('preset-profanity').checked = presets.includes(AUTO_MOD.presetProfanity);
+      document.getElementById('preset-sexual').checked = presets.includes(AUTO_MOD.presetSexual);
+      document.getElementById('preset-slurs').checked = presets.includes(AUTO_MOD.presetSlurs);
+    } else if (rule.triggerType === AUTO_MOD.triggerMentionSpam) {
+      document.getElementById('rule-mention-limit').value = rule.triggerMetadata?.mentionTotalLimit || AUTO_MOD.defaultMentionLimit;
     }
 
     const actions = rule.actions || [];
-    const blockAct = actions.find(a => a.type === 1);
-    const alertAct = actions.find(a => a.type === 2);
-    const timeoutAct = actions.find(a => a.type === 3);
+    const blockAct = actions.find(a => a.type === AUTO_MOD.actionBlockMessage);
+    const alertAct = actions.find(a => a.type === AUTO_MOD.actionAlert);
+    const timeoutAct = actions.find(a => a.type === AUTO_MOD.actionTimeout);
 
     document.getElementById('action-block').checked = Boolean(blockAct);
     this.toggleActionBlock(Boolean(blockAct));
@@ -446,7 +448,7 @@ class SafetyPage {
     document.getElementById('action-timeout').checked = Boolean(timeoutAct);
     this.toggleActionTimeout(Boolean(timeoutAct));
     if (timeoutAct) {
-      document.getElementById('rule-timeout-duration').value = timeoutAct.metadata?.durationSeconds || 300;
+      document.getElementById('rule-timeout-duration').value = timeoutAct.metadata?.durationSeconds || AUTO_MOD.defaultTimeoutSeconds;
     }
 
     document.getElementById('rule-enabled').checked = Boolean(rule.enabled);
@@ -481,9 +483,9 @@ class SafetyPage {
     const presetSection = document.getElementById('trigger-config-preset');
     const mentionSection = document.getElementById('trigger-config-mention');
 
-    if (kwSection) kwSection.style.display = (type === 1 || type === 6) ? 'block' : 'none';
-    if (presetSection) presetSection.style.display = (type === 4) ? 'block' : 'none';
-    if (mentionSection) mentionSection.style.display = (type === 5) ? 'block' : 'none';
+    if (kwSection) kwSection.style.display = (type === AUTO_MOD.triggerKeyword || type === AUTO_MOD.triggerMemberProfile) ? 'block' : 'none';
+    if (presetSection) presetSection.style.display = (type === AUTO_MOD.triggerKeywordPreset) ? 'block' : 'none';
+    if (mentionSection) mentionSection.style.display = (type === AUTO_MOD.triggerMentionSpam) ? 'block' : 'none';
   }
 
   toggleActionBlock(checked) {
@@ -516,25 +518,25 @@ class SafetyPage {
       const name = document.getElementById('rule-name').value.trim();
       const triggerType = parseInt(document.getElementById('rule-trigger-type').value, 10);
       const enabled = document.getElementById('rule-enabled').checked;
-      const eventType = (triggerType === 6) ? 2 : 1;
+      const eventType = (triggerType === AUTO_MOD.triggerMemberProfile) ? AUTO_MOD.eventMemberUpdate : AUTO_MOD.eventMessageSend;
 
       // Trigger Metadata
       const triggerMetadata = {};
-      if (triggerType === 1 || triggerType === 6) {
+      if (triggerType === AUTO_MOD.triggerKeyword || triggerType === AUTO_MOD.triggerMemberProfile) {
         const rawKeywords = document.getElementById('rule-keywords').value;
         triggerMetadata.keywordFilter = rawKeywords.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
         const rawRegex = document.getElementById('rule-regex').value;
         triggerMetadata.regexPatterns = rawRegex.split('\n').map(s => s.trim()).filter(Boolean);
         const rawAllow = document.getElementById('rule-allowlist').value;
         triggerMetadata.allowList = rawAllow.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
-      } else if (triggerType === 4) {
+      } else if (triggerType === AUTO_MOD.triggerKeywordPreset) {
         const presets = [];
-        if (document.getElementById('preset-profanity').checked) presets.push(1);
-        if (document.getElementById('preset-sexual').checked) presets.push(2);
-        if (document.getElementById('preset-slurs').checked) presets.push(3);
+        if (document.getElementById('preset-profanity').checked) presets.push(AUTO_MOD.presetProfanity);
+        if (document.getElementById('preset-sexual').checked) presets.push(AUTO_MOD.presetSexual);
+        if (document.getElementById('preset-slurs').checked) presets.push(AUTO_MOD.presetSlurs);
         triggerMetadata.presets = presets;
-      } else if (triggerType === 5) {
-        triggerMetadata.mentionTotalLimit = parseInt(document.getElementById('rule-mention-limit').value || 5, 10);
+      } else if (triggerType === AUTO_MOD.triggerMentionSpam) {
+        triggerMetadata.mentionTotalLimit = parseInt(document.getElementById('rule-mention-limit').value || AUTO_MOD.defaultMentionLimit, 10);
         triggerMetadata.mentionRaidProtectionEnabled = true;
       }
 
@@ -543,7 +545,7 @@ class SafetyPage {
       if (document.getElementById('action-block').checked) {
         const customMessage = document.getElementById('rule-custom-message').value.trim();
         actions.push({
-          type: (triggerType === 6) ? 4 : 1,
+          type: (triggerType === AUTO_MOD.triggerMemberProfile) ? AUTO_MOD.actionBlockProfile : AUTO_MOD.actionBlockMessage,
           metadata: customMessage ? { customMessage } : {}
         });
       }
@@ -552,16 +554,16 @@ class SafetyPage {
         const channelId = document.getElementById('rule-alert-channel').value;
         if (channelId) {
           actions.push({
-            type: 2,
+            type: AUTO_MOD.actionAlert,
             metadata: { channelId }
           });
         }
       }
 
       if (document.getElementById('action-timeout').checked) {
-        const durationSeconds = parseInt(document.getElementById('rule-timeout-duration').value || 300, 10);
+        const durationSeconds = parseInt(document.getElementById('rule-timeout-duration').value || AUTO_MOD.defaultTimeoutSeconds, 10);
         actions.push({
-          type: 3,
+          type: AUTO_MOD.actionTimeout,
           metadata: { durationSeconds }
         });
       }
@@ -619,10 +621,12 @@ class SafetyPage {
   handleAutoModExecution(data) {
     console.log('[Safety] Real-time AutoMod incident received:', data);
     this.incidents.unshift(data);
-    if (this.incidents.length > 20) this.incidents.pop();
+    if (this.incidents.length > window.MochiConstants.limits.incidentBuffer) this.incidents.pop();
     this.renderIncidentFeed();
 
-    const actionText = (data.action?.type === 3) ? 'Timed out' : (data.action?.type === 2 ? 'Alerted' : 'Blocked message');
+    const actionText = (data.action?.type === AUTO_MOD.actionTimeout)
+      ? 'Timed out'
+      : (data.action?.type === AUTO_MOD.actionAlert ? 'Alerted' : 'Blocked message');
     if (window.Mochi) {
       const parts = [
         { b: 'AutoMod: ' },
@@ -648,19 +652,19 @@ class SafetyPage {
 
     container.innerHTML = this.incidents.map(inc => {
       const timeStr = new Date(inc.executedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      const actionType = inc.action?.type || 1;
+      const actionType = inc.action?.type || AUTO_MOD.actionBlockMessage;
       const actionLabels = {
-        1: 'Blocked',
-        2: 'Alerted',
-        3: 'Timed out',
-        4: 'Profile blocked'
+        [AUTO_MOD.actionBlockMessage]: 'Blocked',
+        [AUTO_MOD.actionAlert]: 'Alerted',
+        [AUTO_MOD.actionTimeout]: 'Timed out',
+        [AUTO_MOD.actionBlockProfile]: 'Profile blocked'
       };
       const actionName = actionLabels[actionType] || 'Blocked';
 
       return `
         <div class="activity-row">
           <div class="activity-row-avatar">
-            <img src="${this.escapeHtml(inc.user?.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png')}" alt="">
+            <img src="${this.escapeHtml(inc.user?.avatar || window.MochiConstants.discord.defaultAvatar)}" alt="">
           </div>
           <div class="activity-row-body">
             <div class="activity-row-head">
@@ -678,58 +682,6 @@ class SafetyPage {
         </div>
       `;
     }).join('');
-  }
-
-  async simulateIncident() {
-    const guildId = this.getGuildId();
-    const testOffenses = [
-      {
-        ruleName: 'Block scam links',
-        triggerType: 1,
-        content: 'Claim Free Discord Nitro 1-Year gift at https://discord-nitro-event.ru/claim!',
-        matchedKeyword: 'discord-nitro-event.ru',
-        actionType: 1
-      },
-      {
-        ruleName: 'Profanity filter',
-        triggerType: 4,
-        content: 'Profanity test violation against server safety policy.',
-        matchedKeyword: 'inappropriate words',
-        actionType: 3,
-        timeoutSeconds: 300
-      },
-      {
-        ruleName: 'Mention raid protection',
-        triggerType: 5,
-        content: '@user1 @user2 @user3 @user4 @user5 @user6 check this out guys!!',
-        matchedKeyword: '> 5 mentions',
-        actionType: 1
-      }
-    ];
-
-    const pick = testOffenses[Math.floor(Math.random() * testOffenses.length)];
-
-    // Deterministic test violator name (simulated input only).
-    this._simViolatorCounter = (this._simViolatorCounter || 100) + 1;
-
-    try {
-      const data = await apiFetch(`/api/guilds/${guildId}/simulate/automod`, {
-        method: 'POST',
-        body: {
-          ruleName: pick.ruleName,
-          triggerType: pick.triggerType,
-          username: 'TestViolator_' + this._simViolatorCounter,
-          channelName: 'general-chat',
-          content: pick.content,
-          matchedKeyword: pick.matchedKeyword,
-          actionType: pick.actionType,
-          timeoutSeconds: pick.timeoutSeconds || 300
-        }
-      });
-      console.log('[Safety Simulator] Triggered test incident:', data);
-    } catch (err) {
-      console.error('[Safety Simulator] Error:', err);
-    }
   }
 
   escapeHtml(str) {

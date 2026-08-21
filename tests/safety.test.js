@@ -1,9 +1,9 @@
 const { TestSuite, assert } = require('./helpers/harness');
-const { startTestServer, demoLogin, silentLogger } = require('./helpers/server');
+const { startTestServer, silentLogger } = require('./helpers/server');
 const { SafetyService } = require('../src/features/safety/safetyService');
 const { createTestDb, createRepos } = require('./helpers/db');
 const { createEventBus } = require('../src/app/eventBus');
-const { DEMO_GUILD_ID } = require('../src/demo/fixtures');
+const { DEMO_GUILD_ID } = require('./helpers/demo/fixtures');
 const {
   AppError,
   NotFoundError,
@@ -179,14 +179,14 @@ async function runSafetyTests() {
     assert.strictEqual(ruleEvents.length, 0, 'service must rely on the Discord echo, not publish a duplicate');
   });
 
-  suite.testAsync('demo safety gateway publishes exactly one canonical event per mutation', async () => {
+  suite.testAsync('in-memory safety gateway publishes exactly one canonical event per mutation', async () => {
     const { createRecordingBus } = require('./helpers/fakes');
     const { SafetyEvents } = require('../src/app/eventBus');
-    const { DemoSafetyGateway } = require('../src/demo/demoSafetyGateway');
+    const { DemoSafetyGateway } = require('./helpers/demo/demoSafetyGateway');
     const bus = createRecordingBus();
     const gateway = new DemoSafetyGateway({ eventBus: bus });
 
-    const created = await gateway.createAutoModRule(DEMO_GUILD_ID, { name: 'Demo Rule', enabled: true });
+    const created = await gateway.createAutoModRule(DEMO_GUILD_ID, { name: 'Test Rule', enabled: true });
     await gateway.editAutoModRule(DEMO_GUILD_ID, created.id, { enabled: false });
 
     const events = bus.recorded.filter((r) => r.event === SafetyEvents.AutoModRuleUpdated);
@@ -196,7 +196,7 @@ async function runSafetyTests() {
     const first = events[0].payload;
     assert.strictEqual(first.action, 'create');
     assert.strictEqual(first.ruleId, created.id);
-    assert.strictEqual(first.name, 'Demo Rule');
+    assert.strictEqual(first.name, 'Test Rule');
     assert.strictEqual(first.enabled, true);
     assert.strictEqual(first.guildId, DEMO_GUILD_ID);
     assert.ok(!('rule' in first), 'payload must be flattened, never nested rule');

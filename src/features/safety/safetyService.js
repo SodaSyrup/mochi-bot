@@ -1,5 +1,12 @@
 const { AppError, NotFoundError, ExternalServiceError } = require('../../dashboard/errors');
 const { SafetyEvents } = require('../../app/eventBus');
+const { ValidationError } = require('../../dashboard/errors');
+const {
+  AUTO_MOD_EVENT_TYPES,
+  AUTO_MOD_TRIGGER_TYPES,
+  AUTO_MOD_ACTION_TYPES,
+  AUTO_MOD_LIMITS,
+} = require('../../platform/discord/autoModConstants');
 
 /**
  * Safety feature service. Delegates Discord/AutoMod operations to the safety
@@ -38,14 +45,14 @@ class SafetyService {
 
   async createRule(guildId, payload) {
     try {
+      this.#validateRulePayload(payload);
       const rule = await this.gateway.createAutoModRule(guildId, payload);
       if (!rule) throw new NotFoundError('Guild is not available.');
       // Option A (dedup model): Discord gateway AutoModerationRule* events are
       // the authoritative realtime notification. The service performs the
       // Discord mutation but does NOT publish AutoModRuleUpdated here — the
       // resulting Discord event (external or dashboard-initiated) publishes the
-      // one canonical event. In demo mode the demo gateway mirrors this by
-      // publishing after mutation. This guarantees one logical change yields one
+      // one canonical event. This guarantees one logical change yields one
       // dashboard event instead of service + Discord echo duplicates.
       return rule;
     } catch (err) {
@@ -57,6 +64,7 @@ class SafetyService {
 
   async updateRule(guildId, ruleId, updates) {
     try {
+      this.#validateRulePayload(updates);
       const rule = await this.gateway.editAutoModRule(guildId, ruleId, updates);
       if (!rule) throw new NotFoundError('AutoMod rule not found.');
       // See createRule — no duplicate publish; the Discord echo publishes once.
@@ -112,37 +120,29 @@ class SafetyService {
     return payload;
   }
 
-  /**
-   * Simulator input only: produce a canonical AutoMod execution event without
-   * any live Discord interaction.
-   */
-  async simulateExecution(guildId, input) {
-    const payload = {
-      guildId,
-      guildName: input.guildName || null,
-      ruleId: input.ruleId || null,
-      ruleName: input.ruleName || null,
-      ruleTriggerType: parseInt(input.triggerType, 10),
-      action: {
-        type: parseInt(input.actionType, 10),
-        metadata: {
-          channelId: input.channelId || null,
-          durationSeconds: input.timeoutSeconds || 0,
-          customMessage: input.customMessage || 'Message blocked by Discord AutoMod protection.',
-        },
-      },
-      userId: input.userId || null,
-      user: input.user || null,
-      channelId: input.channelId || null,
-      channelName: input.channelName || null,
-      messageId: input.messageId || null,
-      content: input.content || '',
-      matchedKeyword: input.matchedKeyword || null,
-      matchedContent: input.matchedKeyword || null,
-      executedAt: new Date().toISOString(),
-    };
-    this.eventBus.emit(SafetyEvents.AutoModExecution, payload);
-    return payload;
+  #validateRulePayload(payload = {}) {
+    if (payload.eventType !== undefined) {
+      const eventType = Number(payload.eventType);
+      if (!AUTO_MOD_EVENT_TYPES.has(eventType)) throw new ValidationError('eventType is not supported by Discord AutoMod.');
+    }
+    if (payload.triggerType !== undefined) {
+      const triggerType = Number(payload.triggerType);
+      if (!AUTO_MOD_TRIGGER_TYPES.has(triggerType)) throw new ValidationError('triggerType is not supported by Discord AutoMod.');
+    }
+    if (payload.actions !== undefined) {
+      if (!Array.isArray(payload.actions)) throw new ValidationError('actions must be an array.');
+      for (const action of payload.actions) {
+        if (!AUTO_MOD_ACTION_TYPES.has(Number(action?.type))) throw new ValidationError('actions contains an unsupported Discord AutoMod action.');
+        const duration = action?.metadata?.durationSeconds;
+        if (duration !== undefined && (!Number.isInteger(Number(duration)) || Number(duration) < 1 || Number(duration) > AUTO_MOD_LIMITS.timeoutMaxSeconds)) {
+          throw new ValidationError(`timeout duration must be between 1 and ${AUTO_MOD_LIMITS.timeoutMaxSeconds} seconds.`);
+        }
+      }
+    }
+    const mentionLimit = payload.triggerMetadata?.mentionTotalLimit;
+    if (mentionLimit !== undefined && (!Number.isInteger(Number(mentionLimit)) || Number(mentionLimit) < AUTO_MOD_LIMITS.mentionTotalMin || Number(mentionLimit) > AUTO_MOD_LIMITS.mentionTotalMax)) {
+      throw new ValidationError(`mentionTotalLimit must be between ${AUTO_MOD_LIMITS.mentionTotalMin} and ${AUTO_MOD_LIMITS.mentionTotalMax}.`);
+    }
   }
 }
 

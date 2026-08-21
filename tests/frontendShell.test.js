@@ -21,7 +21,6 @@ async function runFrontendShellTests() {
       codes: '/codes',
       safety: '/safety',
       honeypot: '/honeypot',
-      simulator: '/simulator',
       settings: '/settings',
     });
   });
@@ -43,14 +42,10 @@ async function runFrontendShellTests() {
     }
   });
 
-  suite.test('resolveBotStatus maps connected/demo/disconnected semantics', () => {
+  suite.test('resolveBotStatus maps connected/disconnected semantics', () => {
     assert.deepStrictEqual(resolveBotStatus({ connected: true, tag: 'Mochi#1234' }), {
       status: 'connected',
       text: 'Connected · Mochi#1234',
-    });
-    assert.deepStrictEqual(resolveBotStatus({ demoMode: true }), {
-      status: 'demo',
-      text: 'Demo mode',
     });
     assert.deepStrictEqual(resolveBotStatus({}), {
       status: 'disconnected',
@@ -59,7 +54,7 @@ async function runFrontendShellTests() {
   });
 
   suite.test('status resolver never emits presentation colors or drama', () => {
-    const outputs = [resolveBotStatus({ connected: true, tag: 'Mochi#1' }), resolveBotStatus({ demoMode: true }), resolveBotStatus({})];
+    const outputs = [resolveBotStatus({ connected: true, tag: 'Mochi#1' }), resolveBotStatus({})];
     for (const out of outputs) {
       assert.ok(!/#[0-9a-fA-F]{3,6}\b/.test(out.text), 'no hex colors in status text');
       assert.ok(!/LIVE|ENGINE|ARMED|GATEWAY/i.test(out.text), 'no marketing status wording');

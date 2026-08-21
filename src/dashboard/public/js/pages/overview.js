@@ -59,7 +59,7 @@ class OverviewPage {
 
   async fetchTopInviters() {
     try {
-      const lbData = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/leaderboard?limit=5`);
+      const lbData = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/leaderboard?limit=${window.MochiConstants.limits.overviewLeaderboard}`);
       const lbTbody = document.querySelector('#overview-leaderboard-table tbody');
       if (!lbTbody) return;
       lbTbody.innerHTML = '';
@@ -74,7 +74,7 @@ class OverviewPage {
             <td class="rank-cell ${rank <= 3 ? 'rank-top' : ''}">${rank}</td>
             <td>
               <div class="user-cell">
-                <img src="${escapeHtml(r.avatar)}" class="user-cell-avatar" alt="" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+                <img src="${escapeHtml(r.avatar)}" class="user-cell-avatar" alt="" onerror="this.src=window.MochiConstants.discord.defaultAvatar">
                 <div>
                   <div class="user-cell-name">${escapeHtml(r.username)}</div>
                 <div class="user-cell-id">${escapeHtml(r.userId)}</div>
@@ -96,7 +96,7 @@ class OverviewPage {
 
   async fetchRecentJoins() {
     try {
-      const histData = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/history?limit=6`);
+      const histData = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/history?limit=${window.MochiConstants.limits.overviewHistory}`);
       const histTbody = document.querySelector('#overview-history-table tbody');
       if (!histTbody) return;
       histTbody.innerHTML = '';
@@ -118,7 +118,7 @@ class OverviewPage {
           tr.innerHTML = `
             <td>
               <div class="user-cell">
-                <img src="${escapeHtml(j.avatar)}" class="user-cell-avatar" alt="" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+                <img src="${escapeHtml(j.avatar)}" class="user-cell-avatar" alt="" onerror="this.src=window.MochiConstants.discord.defaultAvatar">
                 <div>
                   <div class="user-cell-name">${escapeHtml(j.username)}</div>
                 </div>

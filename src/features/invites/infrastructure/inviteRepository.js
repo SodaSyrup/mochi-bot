@@ -2,6 +2,7 @@ const { AttributionType } = require('../domain/attribution');
 const { rebuildGuildInviteProjections } = require('./projectionRebuilder');
 
 const DAILY_COLUMNS = ['joins', 'leaves', 'fakes'];
+const { DEFAULTS } = require('../../../config/defaults');
 
 /**
  * Owns invite persistence only. Business rules (policy, attribution, queueing)
@@ -389,7 +390,7 @@ class InviteRepository {
     };
   }
 
-  getLeaderboard(guildId, { limit = 10, offset = 0 } = {}) {
+  getLeaderboard(guildId, { limit = DEFAULTS.limits.pagination.leaderboardDefault, offset = 0 } = {}) {
     return this.db
       .prepare(`
         SELECT user_id, regular, bonus, leaves, fake, total
@@ -417,7 +418,7 @@ class InviteRepository {
     return row ? row.count : 0;
   }
 
-  getDailyStats(guildId, days = 7) {
+  getDailyStats(guildId, days = DEFAULTS.limits.pagination.analyticsDefaultDays) {
     const rows = this.db
       .prepare(`
         SELECT date, joins, leaves, fakes
@@ -443,7 +444,7 @@ class InviteRepository {
    * Recent joins for the dashboard feed, ordered by most recent event.
    * @returns {Array<{userId, attribution: {type, inviterId, inviteCode}, joinedAt, isFake, isLeft, leftAt, inviteLabel, channelName}>}
    */
-  getRecentJoins(guildId, limit = 10) {
+  getRecentJoins(guildId, limit = DEFAULTS.limits.pagination.historyDefault) {
     const rows = this.db
       .prepare(`
         SELECT
@@ -478,7 +479,7 @@ class InviteRepository {
    * Detailed activity log over the durable ledger — one row per lifecycle event
    * (rejoins produce their own rows). Includes filter/search/pagination.
    */
-  getActivityLog(guildId, { limit = 20, offset = 0, filter = 'all', search = '' } = {}) {
+  getActivityLog(guildId, { limit = DEFAULTS.limits.pagination.activityDefault, offset = 0, filter = 'all', search = '' } = {}) {
     const conditions = ['e.guild_id = ?'];
     const params = [guildId];
 

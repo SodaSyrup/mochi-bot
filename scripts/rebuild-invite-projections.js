@@ -43,8 +43,8 @@ function parseArgs(argv) {
 
 async function main() {
   const { guilds: targetGuilds, dryRun } = parseArgs(process.argv);
-  // Same DB path resolution as application composition — never a copy of the
-  // demo-vs-normal ternary.
+  // Same DB path resolution as application composition — never a duplicated
+  // path derivation.
   const db = createDatabase({ path: resolveDatabasePath(config) });
   runMigrations(db);
 

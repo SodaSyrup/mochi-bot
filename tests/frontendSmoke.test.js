@@ -145,6 +145,7 @@ async function runFrontendInviteLogTests() {
     sandbox.window = sandbox;
 
     loadModule('src/dashboard/public/js/escapeHtml.js', sandbox);
+    loadModule('src/dashboard/public/js/constants.js', sandbox);
     loadModule('src/dashboard/public/js/shared.js', sandbox);
     loadModule('src/dashboard/public/js/pages/settings.js', sandbox);
 
@@ -202,7 +203,7 @@ function waitFor(fn, timeout = 500) {
 async function runFrontendSmokeTests() {
   const suite = new TestSuite('Frontend Shell Smoke (DOM load)');
 
-  const pages = ['overview', 'analytics', 'leaderboard', 'codes', 'safety', 'honeypot', 'simulator', 'settings'];
+  const pages = ['overview', 'analytics', 'leaderboard', 'codes', 'safety', 'honeypot', 'settings'];
 
   for (const page of pages) {
     suite.test(`${page} page scripts load without throwing in a browser-like DOM`, async () => {
@@ -246,6 +247,7 @@ async function runFrontendSmokeTests() {
       sandbox.window = sandbox;
 
       loadModule('src/dashboard/public/js/escapeHtml.js', sandbox);
+      loadModule('src/dashboard/public/js/constants.js', sandbox);
       loadModule('src/dashboard/public/js/layout.js', sandbox);
       loadModule('src/dashboard/public/js/shared.js', sandbox);
       loadModule(`src/dashboard/public/js/pages/${page}.js`, sandbox);

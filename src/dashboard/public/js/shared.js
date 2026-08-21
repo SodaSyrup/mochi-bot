@@ -46,13 +46,16 @@ async function apiFetch(url, options = {}) {
   return data;
 }
 
+const MOCHI_CONSTANTS = typeof window !== 'undefined'
+  ? window.MochiConstants
+  : require('./constants');
+
 /**
  * Map bot telemetry to a semantic status. Colors belong to CSS via
  * `data-status`; this function returns only the semantic state and plain text.
  */
-function resolveBotStatus({ connected = false, demoMode = false, tag = '' } = {}) {
+function resolveBotStatus({ connected = false, tag = '' } = {}) {
   if (connected) return { status: 'connected', text: `Connected · ${tag}` };
-  if (demoMode) return { status: 'demo', text: 'Demo mode' };
   return { status: 'disconnected', text: 'Disconnected' };
 }
 
@@ -62,16 +65,7 @@ class MochiSharedCore {
     this.guilds = [];
     this.socket = null;
     this.guildChangeCallbacks = [];
-    this.realtimeCallbacks = {
-      memberJoin: [],
-      memberLeave: [],
-      inviteCreated: [],
-      inviteLabelUpdated: [],
-      inviteDeleted: [],
-      autoModExecution: [],
-      autoModRuleUpdated: [],
-      honeypotTriggered: []
-    };
+    this.realtimeCallbacks = Object.fromEntries(MOCHI_CONSTANTS.events.map((event) => [event, []]));
 
     // Auto-initialize when DOM is ready
     if (document.readyState === 'loading') {
@@ -97,9 +91,9 @@ class MochiSharedCore {
     const urlGuild = params.get('guild');
     if (urlGuild) {
       this.currentGuildId = urlGuild;
-      localStorage.setItem('mochi_selected_guild', urlGuild);
+      localStorage.setItem(MOCHI_CONSTANTS.storage.selectedGuild, urlGuild);
     } else {
-      const storedGuild = localStorage.getItem('mochi_selected_guild');
+      const storedGuild = localStorage.getItem(MOCHI_CONSTANTS.storage.selectedGuild);
       if (storedGuild) {
         this.currentGuildId = storedGuild;
       }
@@ -201,7 +195,7 @@ class MochiSharedCore {
     }
 
     this.currentGuildId = guildId;
-    localStorage.setItem('mochi_selected_guild', guildId);
+    localStorage.setItem(MOCHI_CONSTANTS.storage.selectedGuild, guildId);
 
     if (this.socket) {
       this.socket.emit('joinGuild', guildId, (response) => {
@@ -289,10 +283,8 @@ class MochiSharedCore {
       const data = await apiFetch('/api/stats');
 
       const connected = Boolean(data.bot.connected);
-      const demo = Boolean(data.bot.demoMode);
       const { status, text } = resolveBotStatus({
         connected,
-        demoMode: demo,
         tag: data.bot.tag || 'Mochi#0000',
       });
 
@@ -315,16 +307,16 @@ class MochiSharedCore {
       const setMode = document.getElementById('settings-mode');
       const setLatency = document.getElementById('settings-latency');
       const setMemory = document.getElementById('settings-memory');
-      if (setDiscord) setDiscord.textContent = connected ? 'Connected' : demo ? 'Demo' : 'Disconnected';
+      if (setDiscord) setDiscord.textContent = connected ? 'Connected' : 'Disconnected';
       if (setBot) setBot.textContent = data.bot.tag || 'Mochi#0000';
-      if (setMode) setMode.textContent = demo ? 'Demo' : 'Development';
+      if (setMode) setMode.textContent = data.appMode || 'Development';
       if (setLatency) setLatency.textContent = ping;
       if (setMemory) setMemory.textContent = ram;
 
       // Setup instructions only make sense when Discord is genuinely absent.
       const setupBox = document.getElementById('setup-instructions');
       if (setupBox) {
-        setupBox.style.display = connected || demo ? 'none' : 'block';
+        setupBox.style.display = connected ? 'none' : 'block';
       }
     } catch (e) {
       console.error('Error fetching stats:', e);
@@ -414,8 +406,8 @@ class MochiSharedCore {
     window.setTimeout(() => {
       toast.style.opacity = '0';
       toast.style.transform = 'translateY(4px)';
-      window.setTimeout(() => toast.remove(), 200);
-    }, 4000);
+      window.setTimeout(() => toast.remove(), MOCHI_CONSTANTS.limits.toastExitMs);
+    }, MOCHI_CONSTANTS.limits.toastDurationMs);
   }
 }
 

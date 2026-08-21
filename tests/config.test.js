@@ -8,8 +8,17 @@ async function runConfigTests() {
     const cfg = buildConfig({ APP_MODE: '' });
     assert.strictEqual(cfg.app.mode, 'development');
     assert.strictEqual(cfg.app.isDevelopment, true);
-    assert.strictEqual(cfg.app.isDemo, false);
     assert.strictEqual(cfg.app.isProduction, false);
+  });
+
+  suite.test('obsolete environment keys are rejected in every mode', () => {
+    assert.throws(
+      () => buildConfig({
+        APP_MODE: 'development',
+        DEMO_MODE: 'true',
+      }),
+      /Obsolete environment variable.*DEMO_MODE/
+    );
   });
 
   suite.test('invalid mode throws', () => {
@@ -63,9 +72,8 @@ async function runConfigTests() {
     assert.notStrictEqual(cfg.dashboard.sessionSecret, 'mochi_default_secret_please_change_in_production');
   });
 
-  suite.test('demo database path is isolated from the live path', () => {
-    const cfg = buildConfig({ APP_MODE: 'demo' });
-    assert.ok(cfg.database.demoPath.endsWith('mochi-demo.sqlite'));
+  suite.test('demo mode is no longer accepted', () => {
+    assert.throws(() => buildConfig({ APP_MODE: 'demo' }), /Invalid APP_MODE/);
   });
 
   suite.test('fake account threshold is validated and configurable', () => {
@@ -107,19 +115,25 @@ async function runConfigTests() {
     );
   });
 
-  suite.test('demo does not inherit the development bypass flag as a bypass', () => {
-    const cfg = buildConfig({ APP_MODE: 'demo', DEV_AUTH_BYPASS: 'true' });
-    // Demo keeps its own auth path; the bypass is only meaningful in development.
-    assert.strictEqual(cfg.app.isDevelopment, false);
-    assert.strictEqual(cfg.app.isDemo, true);
-  });
-
   suite.test('guild permission cache TTL defaults to 600s and is configurable', () => {
     assert.strictEqual(buildConfig({ APP_MODE: 'development' }).auth.permissionTtlSeconds, 600);
     assert.strictEqual(
       buildConfig({ APP_MODE: 'development', GUILD_PERMISSION_CACHE_TTL_SECONDS: '120' }).auth.permissionTtlSeconds,
       120
     );
+  });
+
+  suite.test('session settings are configurable and bounded', () => {
+    const cfg = buildConfig({
+      APP_MODE: 'development',
+      SESSION_TTL_SECONDS: '900',
+      SESSION_COOKIE_NAME: 'test.sid',
+      PORT: '0',
+    });
+    assert.strictEqual(cfg.dashboard.sessionTtlMs, 900000);
+    assert.strictEqual(cfg.dashboard.sessionCookieName, 'test.sid');
+    assert.throws(() => buildConfig({ APP_MODE: 'development', SESSION_TTL_SECONDS: '10' }), /SESSION_TTL_SECONDS/);
+    assert.throws(() => buildConfig({ APP_MODE: 'development', PORT: '65536' }), /PORT/);
   });
 
   suite.testAsync('production Socket.IO CORS is not a wildcard', async () => {

@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const embedBuilder = require('../../services/embedBuilder');
+const { DEFAULTS } = require('../../../config/defaults');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -19,7 +20,7 @@ module.exports = {
     }
 
     const page = interaction.options.getInteger('page') || 1;
-    const limit = 10;
+    const limit = DEFAULTS.limits.pagination.leaderboardDefault;
     const offset = (page - 1) * limit;
 
     const totalInviters = client.services.invites.getInvitersCount(guild.id);

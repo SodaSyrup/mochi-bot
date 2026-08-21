@@ -1,5 +1,6 @@
 const express = require('express');
 const { ValidationError } = require('../errors');
+const { AutoModerationRuleEventType, AutoModerationRuleTriggerType } = require('../../platform/discord/autoModConstants');
 
 /**
  * Safety/AutoMod routes — thin adapters over SafetyService.
@@ -36,8 +37,8 @@ function createSafetyRoutes({ safetyService }) {
   router.post('/automod', async (req, res) => {
     const {
       name,
-      eventType = 1,
-      triggerType = 1,
+      eventType = AutoModerationRuleEventType.MessageSend,
+      triggerType = AutoModerationRuleTriggerType.Keyword,
       triggerMetadata = {},
       actions = [],
       exemptRoles = [],

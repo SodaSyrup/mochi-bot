@@ -1,4 +1,4 @@
-const { AttributionType } = require('../features/invites/domain/attribution');
+const { AttributionType } = require('../../../src/features/invites/domain/attribution');
 const { DEMO_GUILD_ID, DEMO_GUILD, DEMO_INVITES, DEMO_LABELS } = require('./fixtures');
 
 // Deterministic demo seed — no randomness. Produces a stable, screenshot-ready
@@ -73,3 +73,4 @@ function seedDemoData({ inviteRepository, guildRepository, logger }) {
 }
 
 module.exports = { seedDemoData, DEMO_SEED_INVITERS };
+

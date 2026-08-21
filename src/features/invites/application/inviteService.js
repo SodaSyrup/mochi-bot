@@ -3,6 +3,9 @@ const { createInvitePolicy } = require('../domain/invitePolicy');
 const { resolveAttribution } = require('./inviteAttributionService');
 const { GuildSerialQueue } = require('./guildSerialQueue');
 const { InviteEvents } = require('../../../app/eventBus');
+const { discordInviteUrl, discordDefaultAvatar } = require('../../../platform/discord/urls');
+const { DEFAULTS } = require('../../../config/defaults');
+const { ValidationError } = require('../../../dashboard/errors');
 
 /**
  * Application service for the invites feature.
@@ -13,13 +16,14 @@ const { InviteEvents } = require('../../../app/eventBus');
  * transitions. It knows nothing about the dashboard, Socket.IO or HTTP.
  */
 class InviteService {
-  constructor({ inviteRepository, guildRepository, inviteGateway, policy, eventBus, logger }) {
+  constructor({ inviteRepository, guildRepository, inviteGateway, policy, eventBus, logger, limits = null }) {
     this.invites = inviteRepository;
     this.guilds = guildRepository;
     this.gateway = inviteGateway;
     this.policy = policy || createInvitePolicy();
     this.eventBus = eventBus;
     this.logger = logger || console;
+    this.limits = limits || DEFAULTS.limits;
 
     this.queue = new GuildSerialQueue();
     // Operational caches (rebuildable from Discord; NOT durable truth).
@@ -125,8 +129,9 @@ class InviteService {
   }
 
   /**
-   * Process a member join. `attributionOverride` is provided by simulated
-   * inputs; live joins resolve attribution conservatively from invite deltas.
+   * Process a member join. `attributionOverride` is reserved for controlled
+   * application inputs; live joins resolve attribution conservatively from
+   * invite deltas.
    */
   async trackMemberJoin(memberData, attributionOverride = null) {
     return this.queue.run(memberData.guildId, async () => {
@@ -308,8 +313,18 @@ class InviteService {
   // ------------------------------------------------------- invite management
 
   async createInvite({ guildId, channelId, maxAge, maxUses, temporary, label, reason }) {
-    const created = await this.gateway.createInvite({ guildId, channelId, maxAge, maxUses, temporary, reason });
-    const trimmedLabel = label && label.trim() ? label.trim() : null;
+    const normalizedLabel = this.#normalizeLabel(label);
+    const normalizedMaxAge = this.#normalizeInviteNumber(maxAge, 'maxAge', this.limits.maxInviteAgeSeconds);
+    const normalizedMaxUses = this.#normalizeInviteNumber(maxUses, 'maxUses', this.limits.maxInviteUses);
+    const created = await this.gateway.createInvite({
+      guildId,
+      channelId,
+      maxAge: normalizedMaxAge,
+      maxUses: normalizedMaxUses,
+      temporary,
+      reason,
+    });
+    const trimmedLabel = normalizedLabel;
 
     let saved = null;
     if (trimmedLabel) {
@@ -327,7 +342,7 @@ class InviteService {
 
     const inviteDto = {
       code: created.code,
-      url: `https://discord.gg/${created.code}`,
+      url: discordInviteUrl(created.code),
       uses: created.uses || 0,
       maxUses: created.maxUses || 0,
       maxAge: created.maxAge || 0,
@@ -353,10 +368,11 @@ class InviteService {
   }
 
   setInviteLabel({ guildId, code, label, channelId, channelName }) {
-    if (!label || !label.trim()) {
+    const normalizedLabel = this.#normalizeLabel(label);
+    if (!normalizedLabel) {
       return this.removeInviteLabel(guildId, code);
     }
-    const saved = this.invites.setInviteLabel(guildId, code, label.trim(), channelId, channelName);
+    const saved = this.invites.setInviteLabel(guildId, code, normalizedLabel, channelId, channelName);
     const payload = {
       guildId,
       code,
@@ -416,7 +432,7 @@ class InviteService {
       const inviter = inv.inviterId ? users.get(String(inv.inviterId)) : null;
       result.push({
         code: inv.code,
-        url: `https://discord.gg/${inv.code}`,
+        url: discordInviteUrl(inv.code),
         uses: inv.uses || 0,
         maxUses: inv.maxUses || 0,
         maxAge: inv.maxAge || 0,
@@ -446,7 +462,7 @@ class InviteService {
     return this.invites.getLeaderboard(guildId, options);
   }
 
-  async getLeaderboardWithUsers(guildId, { limit = 10, offset = 0 } = {}) {
+  async getLeaderboardWithUsers(guildId, { limit = DEFAULTS.limits.pagination.leaderboardDefault, offset = 0 } = {}) {
     const total = this.invites.getInvitersCount(guildId);
     const rows = this.invites.getLeaderboard(guildId, { limit, offset });
     const users = await this.#resolveUsers(rows.map((row) => row.userId));
@@ -456,7 +472,7 @@ class InviteService {
       leaderboard.push({
         ...row,
         username: user?.username || `User_${row.userId.slice(-4)}`,
-        avatar: user?.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png',
+        avatar: user?.avatar || discordDefaultAvatar(0),
       });
     }
     const page = Math.floor(offset / limit) + 1;
@@ -466,7 +482,7 @@ class InviteService {
     };
   }
 
-  async getRecentJoinsWithUsers(guildId, limit = 10) {
+  async getRecentJoinsWithUsers(guildId, limit = DEFAULTS.limits.pagination.historyDefault) {
     const rows = this.invites.getRecentJoins(guildId, limit);
     const users = await this.#resolveUsers(rows.flatMap((j) => [j.userId, j.attribution.inviterId]));
     const result = [];
@@ -476,7 +492,7 @@ class InviteService {
       result.push({
         userId: j.userId,
         username: user?.username || `User_${j.userId.slice(-4)}`,
-        avatar: user?.avatar || `https://cdn.discordapp.com/embed/avatars/${this.#avatarIndex(j.userId)}.png`,
+        avatar: user?.avatar || discordDefaultAvatar(this.#avatarIndex(j.userId)),
         inviterId: j.attribution.inviterId,
         inviterName: this.#inviterLabel(j.attribution, inviter),
         inviteCode: j.attribution.inviteCode || null,
@@ -509,7 +525,7 @@ class InviteService {
       items.push({
         userId: item.userId,
         username: user?.username || (item.userId.startsWith('mem_') ? `Member_${item.userId.slice(-4)}` : `User_${item.userId.slice(-4)}`),
-        avatar: user?.avatar || `https://cdn.discordapp.com/embed/avatars/${this.#avatarIndex(item.userId)}.png`,
+        avatar: user?.avatar || discordDefaultAvatar(this.#avatarIndex(item.userId)),
         attribution: {
           type: item.attribution.type,
           inviterId: item.attribution.inviterId,
@@ -517,7 +533,7 @@ class InviteService {
         },
         inviterId: item.attribution.inviterId,
         inviterName: this.#inviterLabel(item.attribution, inviter),
-        inviterAvatar: inviter?.avatar || `https://cdn.discordapp.com/embed/avatars/${this.#avatarIndex(item.attribution.inviterId || item.userId)}.png`,
+        inviterAvatar: inviter?.avatar || discordDefaultAvatar(this.#avatarIndex(item.attribution.inviterId || item.userId)),
         inviteCode: item.attribution.inviteCode || 'direct',
         inviteLabel: item.inviteLabel || null,
         channelName: item.channelName || null,
@@ -535,6 +551,25 @@ class InviteService {
   #avatarIndex(id) {
     if (!id) return 0;
     return Math.abs(String(id).split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % 5;
+  }
+
+  #normalizeLabel(label) {
+    if (label === undefined || label === null || String(label).trim() === '') return null;
+    if (typeof label !== 'string') throw new ValidationError('label must be a string.');
+    const trimmed = label.trim();
+    if (trimmed.length > this.limits.maxInviteLabelLength) {
+      throw new ValidationError(`label must be ${this.limits.maxInviteLabelLength} characters or fewer.`);
+    }
+    return trimmed;
+  }
+
+  #normalizeInviteNumber(value, name, max) {
+    if (value === undefined || value === null || String(value).trim() === '') return 0;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > max) {
+      throw new ValidationError(`${name} must be an integer between 0 and ${max}.`);
+    }
+    return parsed;
   }
 
   #inviterLabel(attribution, inviterUser) {

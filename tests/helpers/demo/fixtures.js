@@ -192,3 +192,4 @@ module.exports = {
   DEMO_MEMBERS,
   DEMO_AUTOMOD_RULES,
 };
+

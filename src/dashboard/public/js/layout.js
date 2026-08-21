@@ -18,6 +18,8 @@
 (function (global) {
   'use strict';
 
+  const CONSTANTS = global.MochiConstants;
+
   const NAV_GROUPS = [
     {
       label: 'Invites',
@@ -38,7 +40,6 @@
     {
       label: 'System',
       items: [
-        { page: 'simulator', href: '/simulator', icon: 'fa-flask', label: 'Simulator' },
         { page: 'settings', href: '/settings', icon: 'fa-sliders', label: 'Settings' },
       ],
     },
@@ -140,7 +141,7 @@
 
     const right = el('div', { className: 'topbar-right' }, [
       el('div', { className: 'user-profile' }, [
-        el('img', { className: 'user-avatar', id: 'user-avatar', src: 'https://cdn.discordapp.com/embed/avatars/0.png', alt: 'Your avatar' }),
+        el('img', { className: 'user-avatar', id: 'user-avatar', src: CONSTANTS.discord.defaultAvatar, alt: 'Your avatar' }),
         el('span', { className: 'user-name', id: 'user-name' }, ['…']),
       ]),
       el('a', { className: 'topbar-logout', href: '/auth/logout', 'aria-label': 'Sign out', title: 'Sign out' }, [
@@ -227,7 +228,7 @@
 
   /**
    * Set the sidebar connection status. `status` is semantic only:
-   * 'connected' | 'demo' | 'disconnected' | 'loading'. CSS owns the colors.
+   * 'connected' | 'disconnected' | 'loading'. CSS owns the colors.
    */
   function setStatus({ status = 'loading', text = '' } = {}) {
     const root = document.getElementById('sidebar-status');

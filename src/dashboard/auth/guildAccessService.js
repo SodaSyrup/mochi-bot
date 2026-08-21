@@ -1,6 +1,5 @@
 const { canManageGuild } = require('./permissions');
 const { ForbiddenError } = require('../errors');
-const { DEMO_GUILD_ID, DEMO_GUILD } = require('../../demo/fixtures');
 
 /**
  * Single source of truth for dashboard guild access.
@@ -13,22 +12,18 @@ const { DEMO_GUILD_ID, DEMO_GUILD } = require('../../demo/fixtures');
  * Discord before the access decision (see GuildPermissionService); a failed or
  * revoked refresh fails closed rather than allowing stale authorization.
  *
- * Mode behavior:
- *  - demo:        only the explicit demo guild, for the demo identity.
- *  - development: a session created by the development convenience login
+ * Development behavior: a session created by the development convenience login
  *                 (`isDev`) may access every guild Mochi is in — there is no
- *                 OAuth permission data in that mode. Never active in demo or
- *                 production.
- *  - live:        intersection of manageable user guilds and bot guilds.
+ *                 OAuth permission data in that mode. Live sessions use the
+ *                 intersection of manageable user guilds and bot guilds.
  *
  * Methods accept a session context ({ user, discordOAuth }) so permission
  * refresh can read/write the OAuth snapshot server-side.
  */
 class GuildAccessService {
-  constructor({ guildGateway, permissionService = null, isDemo = false, isDevelopment = false }) {
+  constructor({ guildGateway, permissionService = null, isDevelopment = false }) {
     this.gateway = guildGateway;
     this.permissionService = permissionService;
-    this.isDemo = isDemo;
     this.isDevelopment = isDevelopment;
   }
 
@@ -39,16 +34,11 @@ class GuildAccessService {
   }
 
   /**
-   * @param {{ user?: { id?: string, isDemo?: boolean, isDev?: boolean, discordGuilds?: Array }, discordOAuth?: object }} session
+   * @param {{ user?: { id?: string, isDev?: boolean, discordGuilds?: Array }, discordOAuth?: object }} session
    */
   async listManageableGuilds(session) {
     const sessionUser = this.#user(session);
     if (!sessionUser) return [];
-
-    if (this.isDemo) {
-      if (!sessionUser.isDemo) return [];
-      return [{ ...DEMO_GUILD }];
-    }
 
     const botGuilds = await this.gateway.listGuilds();
     const botGuildById = new Map(botGuilds.map((guild) => [guild.id, guild]));
@@ -62,7 +52,6 @@ class GuildAccessService {
         icon: g.icon || null,
         memberCount: g.memberCount || 0,
         ownerId: g.ownerId || null,
-        isSimulated: false,
       }));
     }
 
@@ -92,7 +81,6 @@ class GuildAccessService {
           icon: g.icon || botGuild?.icon || null,
           memberCount: botGuild?.memberCount || 0,
           ownerId: botGuild?.ownerId || (g.owner ? sessionUser.id : null),
-          isSimulated: false,
         };
       });
   }
@@ -104,9 +92,6 @@ class GuildAccessService {
   async canManageGuild(session, guildId) {
     const sessionUser = this.#user(session);
     if (!sessionUser) return false;
-    if (this.isDemo) {
-      return sessionUser.isDemo && guildId === DEMO_GUILD_ID;
-    }
     const guilds = await this.listManageableGuilds(session);
     return guilds.some((g) => g.id === guildId);
   }

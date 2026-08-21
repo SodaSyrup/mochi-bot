@@ -6,7 +6,6 @@ const { createStatsRouter } = require('./statsRoutes');
 const { createGuildRoutes } = require('./guildRoutes');
 const { createInviteRoutes } = require('./inviteRoutes');
 const { createSafetyRoutes } = require('./safetyRoutes');
-const { createSimulatorRoutes } = require('./simulatorRoutes');
 const { createHoneypotRoutes } = require('./honeypotRoutes');
 
 /**
@@ -30,14 +29,15 @@ function createApiRouter({ client, config, services }) {
 
   const guildScoped = [requireAuth, requireGuildAccess(services.guildAccess, { access: 'manage' })];
 
-  router.use('/guilds/:guildId/invites', ...guildScoped, createInviteRoutes({ inviteService: services.invites }));
+  router.use('/guilds/:guildId/invites', ...guildScoped, createInviteRoutes({
+    inviteService: services.invites,
+    pagination: config.limits.pagination,
+  }));
   router.use('/guilds/:guildId/safety', ...guildScoped, createSafetyRoutes({ safetyService: services.safety }));
   router.use('/guilds/:guildId/honeypot', ...guildScoped, createHoneypotRoutes({
     honeypotService: services.honeypot,
     guildService: services.guilds,
   }));
-  router.use('/guilds/:guildId/simulate', ...guildScoped, createSimulatorRoutes({ inviteService: services.invites, safetyService: services.safety }));
-
   return router;
 }
 

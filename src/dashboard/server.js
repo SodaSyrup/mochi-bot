@@ -26,9 +26,12 @@ class DashboardServer {
     this.app = express();
     this.server = http.createServer(this.app);
 
-    this.sessionStore = sessionStore || new SqliteSessionStore({ path: config.dashboard.sessionStorePath });
+    this.sessionStore = sessionStore || new SqliteSessionStore({
+      path: config.dashboard.sessionStorePath,
+      ttlMs: config.dashboard.sessionTtlMs,
+    });
     this.sessionMiddleware = session({
-      name: 'mochi.sid',
+      name: config.dashboard.sessionCookieName,
       secret: config.dashboard.sessionSecret,
       store: this.sessionStore,
       resave: false,
@@ -37,7 +40,7 @@ class DashboardServer {
         httpOnly: true,
         sameSite: 'lax',
         secure: config.app.isProduction,
-        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+        maxAge: config.dashboard.sessionTtlMs,
       },
     });
 
@@ -100,7 +103,6 @@ class DashboardServer {
     this.app.get('/codes', page('codes.html'));
     this.app.get('/safety', page('safety.html'));
     this.app.get('/honeypot', page('honeypot.html'));
-    this.app.get('/simulator', page('simulator.html'));
     this.app.get('/settings', page('settings.html'));
 
     // JSON 404 for unknown API endpoints, HTML 404 for everything else.

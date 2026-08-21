@@ -1,15 +1,15 @@
 const { AttributionType } = require('./attribution');
-
-const DEFAULT_FAKE_THRESHOLD_DAYS = 7;
+const { DEFAULTS } = require('../../../config/defaults');
+const DEFAULT_FAKE_THRESHOLD_DAYS = DEFAULTS.inviteTracker.fakeAccountThresholdDays;
 
 /**
  * Centralized invite policy. Live guildMemberAdd handling, member
- * reconciliation and the simulator all call these same rules so bot-member
+ * reconciliation calls these same rules so bot-member
  * handling and fake classification never diverge between paths.
  *
  * @param {{ now?: () => number }} options - injectable clock for deterministic tests.
  */
-function createInvitePolicy({ now = () => Date.now() } = {}) {
+function createInvitePolicy({ now = () => Date.now(), defaultFakeThresholdDays = DEFAULT_FAKE_THRESHOLD_DAYS } = {}) {
   return {
     /** Bot accounts are never tracked as invite members. */
     shouldTrackMember(member) {
@@ -21,7 +21,7 @@ function createInvitePolicy({ now = () => Date.now() } = {}) {
      * honored instead of being replaced by the default.
      */
     isSuspiciousAccount({ accountCreatedAt, joinedAt, fakeThresholdDays }) {
-      const thresholdDays = fakeThresholdDays ?? DEFAULT_FAKE_THRESHOLD_DAYS;
+      const thresholdDays = fakeThresholdDays ?? defaultFakeThresholdDays;
       const joinTime = joinedAt ? new Date(joinedAt).getTime() : now();
       const createdTime = accountCreatedAt ? new Date(accountCreatedAt).getTime() : joinTime;
       const ageMs = joinTime - createdTime;

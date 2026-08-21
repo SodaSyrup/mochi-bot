@@ -32,7 +32,7 @@ class LeaderboardPage {
     if (!this.currentGuildId) return;
 
     try {
-      const data = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/leaderboard?limit=25`);
+      const data = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/leaderboard?limit=${window.MochiConstants.limits.leaderboardPageSize}`);
       const tbody = document.querySelector('#full-leaderboard-table tbody');
       if (!tbody) return;
       tbody.innerHTML = '';
@@ -49,7 +49,7 @@ class LeaderboardPage {
           <td class="rank-cell ${rank <= 3 ? 'rank-top' : ''}">${rank}</td>
           <td>
             <div class="user-cell">
-              <img src="${escapeHtml(r.avatar)}" class="user-cell-avatar" alt="" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+              <img src="${escapeHtml(r.avatar)}" class="user-cell-avatar" alt="" onerror="this.src=window.MochiConstants.discord.defaultAvatar">
               <div>
                 <div class="user-cell-name">${escapeHtml(r.username)}</div>
                 <div class="user-cell-id">${escapeHtml(r.userId)}</div>

@@ -1,4 +1,5 @@
 const { UnauthorizedError, ExternalServiceError } = require('../errors');
+const { DISCORD_API_BASE_URL } = require('../../platform/discord/urls');
 
 /**
  * Discord OAuth2 client. Wraps the authorize/token/identity/guilds/refresh
@@ -33,7 +34,7 @@ class DiscordOAuthClient {
       scope: 'identify guilds',
       state,
     });
-    return `https://discord.com/api/oauth2/authorize?${params.toString()}`;
+    return `${DISCORD_API_BASE_URL}/oauth2/authorize?${params.toString()}`;
   }
 
   /**
@@ -41,7 +42,7 @@ class DiscordOAuthClient {
    * @returns {Promise<{ accessToken: string, refreshToken: string|null, expiresIn: number, tokenData: object }>}
    */
   async exchangeCode(code) {
-    const res = await this.#fetch('https://discord.com/api/oauth2/token', {
+    const res = await this.#fetch(`${DISCORD_API_BASE_URL}/oauth2/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -74,7 +75,7 @@ class DiscordOAuthClient {
     if (!refreshToken) {
       throw new UnauthorizedError('OAuth refresh token is missing; re-authentication required.');
     }
-    const res = await this.#fetch('https://discord.com/api/oauth2/token', {
+    const res = await this.#fetch(`${DISCORD_API_BASE_URL}/oauth2/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -97,7 +98,7 @@ class DiscordOAuthClient {
   }
 
   async fetchIdentity(accessToken) {
-    const res = await this.#fetch('https://discord.com/api/users/@me', {
+    const res = await this.#fetch(`${DISCORD_API_BASE_URL}/users/@me`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (res.status === 401) throw new UnauthorizedError('Discord identity fetch failed; please sign in again.');
@@ -110,7 +111,7 @@ class DiscordOAuthClient {
    * @returns {Promise<Array<{id, name, icon, owner, permissions}>>}
    */
   async fetchGuilds(accessToken) {
-    const res = await this.#fetch('https://discord.com/api/users/@me/guilds', {
+    const res = await this.#fetch(`${DISCORD_API_BASE_URL}/users/@me/guilds`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (res.status === 401) throw new UnauthorizedError('Discord guild fetch failed; please sign in again.');
@@ -125,7 +126,7 @@ class DiscordOAuthClient {
   async revokeToken(accessToken) {
     if (!accessToken) return;
     try {
-      await this.#fetch('https://discord.com/api/oauth2/token/revoke', {
+      await this.#fetch(`${DISCORD_API_BASE_URL}/oauth2/token/revoke`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({

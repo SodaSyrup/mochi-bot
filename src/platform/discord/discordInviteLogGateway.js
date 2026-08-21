@@ -1,9 +1,12 @@
 const { AuditLogEvent, PermissionFlagsBits } = require('discord.js');
+const { DEFAULTS } = require('../../config/defaults');
 
-const BOT_ADD_FRESHNESS_MS = 30 * 1000;
-const AUDIT_ATTEMPTS = 3;
-const AUDIT_RETRY_DELAY_MS = 500;
-const AUDIT_BATCH_LIMIT = 10;
+const {
+  botAddFreshnessMs: BOT_ADD_FRESHNESS_MS,
+  auditAttempts: AUDIT_ATTEMPTS,
+  auditRetryDelayMs: AUDIT_RETRY_DELAY_MS,
+  auditBatchLimit: AUDIT_BATCH_LIMIT,
+} = DEFAULTS.operations;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));

@@ -1,4 +1,5 @@
 const { ActivityType } = require('discord.js');
+const config = require('../../config');
 
 module.exports = {
   name: 'ready',
@@ -21,7 +22,7 @@ module.exports = {
     };
 
     updatePresence();
-    client.mochiPresenceInterval = setInterval(updatePresence, 60000);
+    client.mochiPresenceInterval = setInterval(updatePresence, config.operations.presenceIntervalMs);
     client.mochiPresenceInterval.unref?.();
 
     console.log(`[Bot] Initializing invite cache for ${client.guilds.cache.size} guilds...`);
@@ -47,8 +48,8 @@ module.exports = {
       return failures;
     };
 
-    const primeFailures = await runBounded((guildId) => services.invites.primeGuildInvites(guildId), 4);
-    const reconcileFailures = await runBounded((guildId) => services.invites.reconcileGuildMembers(guildId), 2);
+    const primeFailures = await runBounded((guildId) => services.invites.primeGuildInvites(guildId), config.operations.guildInviteInitConcurrency);
+    const reconcileFailures = await runBounded((guildId) => services.invites.reconcileGuildMembers(guildId), config.operations.guildMemberReconcileConcurrency);
     const failures = [...primeFailures, ...reconcileFailures];
     if (failures.length > 0) {
       console.warn(`[Bot] Invite initialization completed with ${failures.length} guild failure(s).`);

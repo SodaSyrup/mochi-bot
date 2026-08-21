@@ -13,12 +13,6 @@ const { DiscordSafetyGateway } = require('../platform/discord/discordSafetyGatew
 const { DiscordInviteLogGateway } = require('../platform/discord/discordInviteLogGateway');
 const { DiscordHoneypotGateway } = require('../platform/discord/discordHoneypotGateway');
 
-const { DemoInviteGateway } = require('../demo/demoInviteGateway');
-const { DemoGuildGateway } = require('../demo/demoGuildGateway');
-const { DemoSafetyGateway } = require('../demo/demoSafetyGateway');
-const { DemoInviteLogGateway } = require('../demo/demoInviteLogGateway');
-const { DemoHoneypotGateway } = require('../demo/demoHoneypotGateway');
-
 const { GuildAccessService } = require('../dashboard/auth/guildAccessService');
 const { GuildPermissionService } = require('../dashboard/auth/guildPermissionService');
 const { DiscordOAuthClient } = require('../dashboard/auth/discordOAuthClient');
@@ -26,11 +20,9 @@ const { HoneypotRepository } = require('../features/honeypot/infrastructure/hone
 const { HoneypotService } = require('../features/honeypot/honeypotService');
 
 /**
- * Compose all application services from a config + database + (optional)
- * Discord client. Demo vs live gateway selection happens EXACTLY here, once.
- * Nothing else in the application decides whether to simulate.
+ * Compose all application services from a config + database + Discord client.
  */
-function createServices({ config, db, eventBus, client, logger }) {
+function createServices({ config, db, eventBus, client, logger, gatewayOverrides = {} }) {
   const guildRepository = new GuildRepository(db, {
     defaultFakeThresholdDays: config.inviteTracker.fakeAccountThresholdDays,
   });
@@ -38,29 +30,21 @@ function createServices({ config, db, eventBus, client, logger }) {
   const inviteLogRepository = new InviteLogRepository(db);
   const honeypotRepository = new HoneypotRepository(db);
 
-  let guildGateway;
-  let inviteGateway;
-  let safetyGateway;
-  let inviteLogGateway;
-  let honeypotGateway;
+  const guildGateway = gatewayOverrides.guild || new DiscordGuildGateway({ client, logger });
+  const inviteGateway = gatewayOverrides.invite || new DiscordInviteGateway({ client, logger });
+  const safetyGateway = gatewayOverrides.safety || new DiscordSafetyGateway({ client, logger });
+  const inviteLogGateway = gatewayOverrides.inviteLog || new DiscordInviteLogGateway({ client, logger });
+  const honeypotGateway = gatewayOverrides.honeypot || new DiscordHoneypotGateway({ client, logger });
 
-  if (config.app.isDemo) {
-    guildGateway = new DemoGuildGateway();
-    inviteGateway = new DemoInviteGateway();
-    safetyGateway = new DemoSafetyGateway({ eventBus });
-    inviteLogGateway = new DemoInviteLogGateway();
-    honeypotGateway = new DemoHoneypotGateway();
-  } else {
-    guildGateway = new DiscordGuildGateway({ client, logger });
-    inviteGateway = new DiscordInviteGateway({ client, logger });
-    safetyGateway = new DiscordSafetyGateway({ client, logger });
-    inviteLogGateway = new DiscordInviteLogGateway({ client, logger });
-    honeypotGateway = new DiscordHoneypotGateway({ client, logger });
-  }
+  const policy = createInvitePolicy({
+    defaultFakeThresholdDays: config.inviteTracker.fakeAccountThresholdDays,
+  });
 
-  const policy = createInvitePolicy();
-
-  const guilds = new GuildService({ guildRepository, guildGateway });
+  const guilds = new GuildService({
+    guildRepository,
+    guildGateway,
+    maxFakeThresholdDays: config.inviteTracker.maxFakeAccountThresholdDays,
+  });
   const invites = new InviteService({
     inviteRepository,
     guildRepository,
@@ -68,6 +52,7 @@ function createServices({ config, db, eventBus, client, logger }) {
     policy,
     eventBus,
     logger,
+    limits: config.limits,
   });
   const safety = new SafetyService({ safetyGateway, eventBus, logger });
   const inviteLogs = new InviteLogService({
@@ -95,7 +80,6 @@ function createServices({ config, db, eventBus, client, logger }) {
   const guildAccess = new GuildAccessService({
     guildGateway,
     permissionService: guildPermissionService,
-    isDemo: config.app.isDemo,
     isDevelopment: config.app.isDevelopment,
   });
 

@@ -26,7 +26,7 @@ class HoneypotPage {
           username: payload.username || 'Recently kicked player',
           occurred_at: payload.occurredAt,
         });
-        this.recentKicks = this.recentKicks.slice(0, 10);
+        this.recentKicks = this.recentKicks.slice(0, window.MochiConstants.limits.recentHoneypotKicks);
         this.renderRecentKicks();
         this.renderStatus();
       }

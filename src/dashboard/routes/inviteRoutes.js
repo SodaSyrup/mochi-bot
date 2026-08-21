@@ -1,6 +1,7 @@
 const express = require('express');
 const { ValidationError } = require('../errors');
 const { parseBoundedInt } = require('../http/parseBoundedInt');
+const { DEFAULTS } = require('../../config/defaults');
 
 /**
  * Invite routes — thin adapters over InviteService. No repository access,
@@ -12,26 +13,26 @@ const { parseBoundedInt } = require('../http/parseBoundedInt');
  *   activity-log: limit default 20 (1..100), offset default 0 (0..1000000)
  *   analytics:    days default 7 (1..90)
  */
-function createInviteRoutes({ inviteService }) {
+function createInviteRoutes({ inviteService, pagination = DEFAULTS.limits.pagination }) {
   const router = express.Router({ mergeParams: true });
 
   router.get('/leaderboard', async (req, res) => {
-    const limit = parseBoundedInt(req.query.limit, { defaultValue: 10, min: 1, max: 100, name: 'limit' });
-    const page = parseBoundedInt(req.query.page, { defaultValue: 1, min: 1, max: 1000000, name: 'page' });
+    const limit = parseBoundedInt(req.query.limit, { defaultValue: pagination.leaderboardDefault, min: 1, max: pagination.max, name: 'limit' });
+    const page = parseBoundedInt(req.query.page, { defaultValue: 1, min: 1, max: pagination.maxPage, name: 'page' });
     const offset = (page - 1) * limit;
     const data = await inviteService.getLeaderboardWithUsers(req.params.guildId, { limit, offset });
     res.json(data);
   });
 
   router.get('/history', async (req, res) => {
-    const limit = parseBoundedInt(req.query.limit, { defaultValue: 15, min: 1, max: 100, name: 'limit' });
+    const limit = parseBoundedInt(req.query.limit, { defaultValue: pagination.historyDefault, min: 1, max: pagination.max, name: 'limit' });
     const history = await inviteService.getRecentJoinsWithUsers(req.params.guildId, limit);
     res.json({ history });
   });
 
   router.get('/activity-log', async (req, res) => {
-    const limit = parseBoundedInt(req.query.limit, { defaultValue: 20, min: 1, max: 100, name: 'limit' });
-    const offset = parseBoundedInt(req.query.offset, { defaultValue: 0, min: 0, max: 1000000, name: 'offset' });
+    const limit = parseBoundedInt(req.query.limit, { defaultValue: pagination.activityDefault, min: 1, max: pagination.max, name: 'limit' });
+    const offset = parseBoundedInt(req.query.offset, { defaultValue: 0, min: 0, max: pagination.maxOffset, name: 'offset' });
     const filter = req.query.filter || 'all';
     const search = req.query.search || '';
     const data = await inviteService.getActivityLogWithUsers(req.params.guildId, { limit, offset, filter, search });
@@ -39,7 +40,7 @@ function createInviteRoutes({ inviteService }) {
   });
 
   router.get('/analytics', async (req, res) => {
-    const days = parseBoundedInt(req.query.days, { defaultValue: 7, min: 1, max: 90, name: 'days' });
+    const days = parseBoundedInt(req.query.days, { defaultValue: pagination.analyticsDefaultDays, min: 1, max: pagination.analyticsMaxDays, name: 'days' });
     const stats = inviteService.getDailyStats(req.params.guildId, days);
 
     // Fill every day in the requested window so charts render a continuous

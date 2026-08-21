@@ -1,5 +1,5 @@
 const { DEMO_GUILD_ID, DEMO_AUTOMOD_RULES, DEMO_GUILD } = require('./fixtures');
-const { SafetyEvents } = require('../app/eventBus');
+const { SafetyEvents } = require('../../../src/app/eventBus');
 
 /**
  * Demo safety gateway — in-memory AutoMod/safety mirror for APP_MODE=demo.
@@ -112,3 +112,4 @@ class DemoSafetyGateway {
 }
 
 module.exports = { DemoSafetyGateway };
+

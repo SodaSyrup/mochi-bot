@@ -41,9 +41,10 @@ async function runFrontendSafetyTests() {
   });
 
   suite.test('page scripts load the shared escapeHtml module before use', () => {
-    for (const page of ['overview', 'analytics', 'codes', 'leaderboard', 'safety', 'simulator', 'settings']) {
+    for (const page of ['overview', 'analytics', 'codes', 'leaderboard', 'safety', 'settings']) {
       const html = fs.readFileSync(path.join(__dirname, `../src/dashboard/public/pages/${page}.html`), 'utf8');
       assert.ok(html.includes('/js/escapeHtml.js'), `${page}.html must load escapeHtml.js`);
+      assert.ok(html.includes('/js/constants.js'), `${page}.html must load constants.js`);
     }
   });
 

@@ -1,4 +1,5 @@
 const { EventEmitter } = require('events');
+const { DEFAULTS } = require('../config/defaults');
 
 /**
  * Application event bus. Feature services publish canonical, serializable
@@ -9,7 +10,7 @@ const { EventEmitter } = require('events');
  */
 function createEventBus() {
   const emitter = new EventEmitter();
-  emitter.setMaxListeners(50);
+  emitter.setMaxListeners(DEFAULTS.operations.eventBusMaxListeners);
   return emitter;
 }
 

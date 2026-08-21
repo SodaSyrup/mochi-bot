@@ -1,6 +1,6 @@
 const express = require('express');
 const os = require('os');
-const { requireAuth } = require('../auth/requireAuth');
+const { discordDefaultAvatar } = require('../../platform/discord/urls');
 
 /**
  * Global telemetry + health. `/stats` is intentionally public (non-sensitive
@@ -19,12 +19,12 @@ function createStatsRouter({ client, guildGateway, config }) {
       bot: {
         name: client?.user?.username || 'Mochi',
         tag: client?.user?.tag || 'Mochi#0000',
-        avatar: client?.user?.displayAvatarURL?.() || 'https://cdn.discordapp.com/embed/avatars/2.png',
+        avatar: client?.user?.displayAvatarURL?.() || discordDefaultAvatar(2),
         connected: isBotConnected,
-        demoMode: config.app.isDemo,
         ping: isBotConnected ? client?.ws?.ping : 0,
         uptime: process.uptime(),
       },
+      appMode: config.app.mode,
       telemetry: {
         serverCount: guilds.length,
         memberCount: totalMembers,

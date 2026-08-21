@@ -1,6 +1,6 @@
 const express = require('express');
 const { generateOAuthState } = require('../auth/permissions');
-const { DEMO_ADMIN_ID } = require('../../demo/fixtures');
+const { discordDefaultAvatar, discordUserAvatarUrl } = require('../../platform/discord/urls');
 
 /**
  * Loopback check. Uses the actual TCP peer address (req.socket.remoteAddress)
@@ -26,19 +26,7 @@ function publicUser(user) {
     discriminator: user.discriminator ?? null,
     avatar: user.avatar ?? null,
     tag: user.tag ?? null,
-    isDemo: Boolean(user.isDemo),
     isDev: Boolean(user.isDev),
-  };
-}
-
-function demoUser() {
-  return {
-    id: DEMO_ADMIN_ID,
-    username: 'MochiAdmin',
-    discriminator: '0001',
-    avatar: 'https://cdn.discordapp.com/embed/avatars/0.png',
-    tag: 'MochiAdmin#0001',
-    isDemo: true,
   };
 }
 
@@ -52,16 +40,15 @@ function demoUser() {
  *
  * The `isDev` flag grants access to every guild the bot is connected to via
  * GuildAccessService (there is no OAuth permission data in this mode). It is
- * never created in demo or production, and never without the explicit bypass.
+ * never created in production, and never without the explicit bypass.
  */
 function developmentUser() {
   return {
     id: 'development_admin',
     username: 'Development Admin',
     discriminator: null,
-    avatar: 'https://cdn.discordapp.com/embed/avatars/2.png',
+    avatar: discordDefaultAvatar(2),
     tag: 'Development Admin',
-    isDemo: false,
     isDev: true,
     discordGuilds: [],
   };
@@ -80,20 +67,10 @@ function createAuthRoutes({ oauthClient, config, logger }) {
     if (req.session?.user) {
       return res.json({ authenticated: true, user: publicUser(req.session.user) });
     }
-    if (config.app.isDemo) {
-      const user = demoUser();
-      req.session.user = user;
-      return res.json({ authenticated: true, user: publicUser(user) });
-    }
     return res.json({ authenticated: false, user: null });
   });
 
   router.get('/login', (req, res) => {
-    if (config.app.isDemo) {
-      req.session.user = demoUser();
-      return res.redirect('/');
-    }
-
     if (!oauthClient.enabled) {
       const bypassEnabled = config.app.devAuthBypass === true && config.app.isDevelopment;
       const loopback = isLoopbackAddress(req.socket?.remoteAddress);
@@ -145,10 +122,9 @@ function createAuthRoutes({ oauthClient, config, logger }) {
         username: userData.username,
         discriminator: userData.discriminator,
         avatar: userData.avatar
-          ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png`
-          : 'https://cdn.discordapp.com/embed/avatars/0.png',
+          ? discordUserAvatarUrl(userData.id, userData.avatar)
+          : discordDefaultAvatar(0),
         tag: userData.discriminator ? `${userData.username}#${userData.discriminator}` : userData.username,
-        isDemo: false,
         // Normalized guild permission info (parsed only inside GuildAccessService).
         discordGuilds: (Array.isArray(guildsData) ? guildsData : []).map((g) => ({
           id: g.id,

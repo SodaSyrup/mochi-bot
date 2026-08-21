@@ -8,7 +8,7 @@ const DashboardServer = require('../dashboard/server');
 
 /**
  * Composition root. Builds config, database (migrated), event bus, services,
- * demo seed (demo mode only), and the dashboard. index.js stays a thin
+ * and the dashboard. index.js stays a thin
  * bootstrap that only wires the Discord client and starts everything.
  *
  * @param {{ config?: object, client?: object, overrides?: object }} options
@@ -24,16 +24,14 @@ async function createApplication({ config, client = null, overrides = {} } = {})
     runMigrations(db);
   }
 
-  const services = overrides.services || createServices({ config, db, eventBus, client: resolvedClient, logger });
-
-  if (config.app.isDemo && !overrides.skipDemoSeed) {
-    const { seedDemoData } = require('../demo/seedDemoData');
-    seedDemoData({
-      inviteRepository: services.inviteRepository,
-      guildRepository: services.guildRepository,
-      logger,
-    });
-  }
+  const services = overrides.services || createServices({
+    config,
+    db,
+    eventBus,
+    client: resolvedClient,
+    logger,
+    gatewayOverrides: overrides.gatewayOverrides,
+  });
 
   const dashboard = new DashboardServer({
     client: resolvedClient,

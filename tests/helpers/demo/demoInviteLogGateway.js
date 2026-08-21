@@ -21,3 +21,4 @@ class DemoInviteLogGateway {
 }
 
 module.exports = { DemoInviteLogGateway };
+

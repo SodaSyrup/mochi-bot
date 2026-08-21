@@ -1,6 +1,8 @@
 /**
  * Persistent per-guild honeypot configuration and trigger counter.
  */
+const { DEFAULTS } = require('../../../config/defaults');
+
 class HoneypotRepository {
   constructor(db) {
     this.db = db;
@@ -70,7 +72,7 @@ class HoneypotRepository {
     return transaction();
   }
 
-  getRecentKicks(guildId, channelId, limit = 10) {
+  getRecentKicks(guildId, channelId, limit = DEFAULTS.limits.pagination.recentHoneypotKicks) {
     return this.db.prepare(`
       SELECT id, guild_id, channel_id, user_id, username, occurred_at
       FROM honeypot_kicks

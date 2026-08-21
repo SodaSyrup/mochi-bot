@@ -1,4 +1,5 @@
 const { AutoModerationRuleTriggerType } = require('discord.js');
+const { AUTO_MOD_LIMITS } = require('./autoModConstants');
 
 /**
  * Feature-oriented adapter for Discord safety/AutoMod operations. Discord
@@ -79,7 +80,7 @@ class DiscordSafetyGateway {
       };
     } else if (triggerType === AutoModerationRuleTriggerType.MentionSpam) {
       p.triggerMetadata = {
-        mentionTotalLimit: parseInt(tm.mentionTotalLimit || 5, 10),
+        mentionTotalLimit: parseInt(tm.mentionTotalLimit || AUTO_MOD_LIMITS.mentionTotalDefault, 10),
         mentionRaidProtectionEnabled: Boolean(tm.mentionRaidProtectionEnabled),
       };
     }
@@ -114,7 +115,6 @@ class DiscordSafetyGateway {
       features: guild.features || [],
       rulesCount,
       enabledRulesCount,
-      isSimulated: false,
     };
   }
 
@@ -141,7 +141,6 @@ class DiscordSafetyGateway {
       defaultMessageNotifications: guild.defaultMessageNotifications,
       mfaLevel: guild.mfaLevel,
       safetyAlertsChannelId: guild.safetyAlertsChannelId || payload.safetyAlertsChannelId,
-      isSimulated: false,
     };
   }
 

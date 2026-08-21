@@ -1,7 +1,8 @@
 const session = require('express-session');
 const { createDatabase } = require('../../database/createDatabase');
+const { DEFAULTS } = require('../../config/defaults');
 
-const DEFAULT_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const DEFAULT_SESSION_TTL_MS = DEFAULTS.dashboard.sessionTtlSeconds * 1000;
 
 /**
  * Small durable express-session store backed by SQLite.

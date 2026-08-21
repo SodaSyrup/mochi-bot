@@ -29,6 +29,19 @@
   --danger: #d9534f;
   --danger-soft: rgba(217, 83, 79, 0.12);
   --info: #5865f2;
+  --text-on-accent: #fff;
+  --danger-hover: #c74440;
+  --success-text: #57b87a;
+  --warning-text: #d9a441;
+  --danger-text: #e06964;
+  --info-text: #8b94ff;
+  --honeypot-bg: #1a1b1d;
+  --honeypot-border: #383a3d;
+  --honeypot-title: #f0f0f1;
+  --honeypot-copy: #b5b7ba;
+  --honeypot-pill: #2b2d30;
+  --honeypot-pill-border: #45474b;
+  --honeypot-pill-text: #d8d9db;
 
   --radius-sm: 4px;
   --radius-md: 7px;

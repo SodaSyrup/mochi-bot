@@ -182,14 +182,12 @@ async function runOAuthTests() {
       discriminator: '0',
       avatar: 'https://example.com/a.png',
       tag: 'TestUser#0',
-      isDemo: false,
       isDev: false,
       discordGuilds: [{ id: 'g', name: 'G' }],
     });
     assert.strictEqual(out.username, 'TestUser');
     assert.ok(!('discordGuilds' in out), 'raw permission snapshot must not leak');
     assert.ok(!('accessToken' in out) && !('refreshToken' in out));
-    assert.deepStrictEqual(out.isDemo, false);
   });
 
   suite.test('isLoopbackAddress accepts only loopback addresses', () => {

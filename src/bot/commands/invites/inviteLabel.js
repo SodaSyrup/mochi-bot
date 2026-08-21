@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const embedBuilder = require('../../services/embedBuilder');
+const { discordInviteUrl } = require('../../../platform/discord/urls');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -48,7 +49,7 @@ module.exports = {
 
     const embed = embedBuilder.success(
       '🏷️ Invite Labeled Successfully',
-      `Invite **[discord.gg/${rawCode}](https://discord.gg/${rawCode})** has been labeled as:\n**🏷️ ${label.trim()}**\n\nThis label will be visible on the Mochi Web Dashboard and in invite leaderboards.`
+      `Invite **[${discordInviteUrl(rawCode)}](${discordInviteUrl(rawCode)})** has been labeled as:\n**🏷️ ${label.trim()}**\n\nThis label will be visible on the Mochi Web Dashboard and in invite leaderboards.`
     );
 
     return interaction.reply({ embeds: [embed], ephemeral: true });

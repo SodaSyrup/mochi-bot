@@ -1,7 +1,6 @@
 const { TestSuite, assert } = require('./helpers/harness');
 const { GuildAccessService } = require('../src/dashboard/auth/guildAccessService');
 const { PermissionFlagsBits } = require('discord.js');
-const { DEMO_GUILD_ID } = require('../src/demo/fixtures');
 
 const ADMIN = String(PermissionFlagsBits.Administrator);
 
@@ -18,7 +17,7 @@ async function runGuildAccessTests() {
         ];
       },
     };
-    const access = new GuildAccessService({ guildGateway: gateway, isDemo: false });
+    const access = new GuildAccessService({ guildGateway: gateway });
     const user = {
       id: 'u',
       discordGuilds: [
@@ -39,7 +38,7 @@ async function runGuildAccessTests() {
         return [{ id: 'a', name: 'A' }];
       },
     };
-    const access = new GuildAccessService({ guildGateway: gateway, isDemo: false });
+    const access = new GuildAccessService({ guildGateway: gateway });
     const user = { id: 'u', discordGuilds: [{ id: 'a', name: 'A', owner: true, permissions: '0' }] };
     assert.strictEqual(await access.canManageGuild(user, 'a'), true);
     assert.strictEqual(await access.canManageGuild(user, 'b'), false);
@@ -52,21 +51,12 @@ async function runGuildAccessTests() {
         return [{ id: 'a', name: 'A', ownerId: 'server-owner' }];
       },
     };
-    const access = new GuildAccessService({ guildGateway: gateway, isDemo: false });
+    const access = new GuildAccessService({ guildGateway: gateway });
     const owner = { id: 'server-owner', discordGuilds: [{ id: 'a', name: 'A', owner: false, permissions: '0' }] };
     const nonOwner = { id: 'different-user', discordGuilds: [{ id: 'a', name: 'A', owner: false, permissions: '0' }] };
 
     assert.strictEqual(await access.canManageGuild(owner, 'a'), true);
     assert.strictEqual(await access.canManageGuild(nonOwner, 'a'), false);
-  });
-
-  suite.test('demo mode only exposes the demo guild to the demo identity', async () => {
-    const access = new GuildAccessService({ guildGateway: {}, isDemo: true });
-    const demoUser = { id: 'x', isDemo: true };
-    assert.strictEqual(await access.canManageGuild(demoUser, DEMO_GUILD_ID), true);
-    assert.strictEqual(await access.canManageGuild(demoUser, 'other'), false);
-    assert.strictEqual(await access.canManageGuild({ id: 'x', isDemo: false }, DEMO_GUILD_ID), false);
-    assert.strictEqual(await access.canManageGuild(null, DEMO_GUILD_ID), false);
   });
 
   suite.test('development dev-login session can manage every bot guild (development only)', async () => {
@@ -78,7 +68,7 @@ async function runGuildAccessTests() {
         ];
       },
     };
-    const devAccess = new GuildAccessService({ guildGateway: gateway, isDemo: false, isDevelopment: true });
+    const devAccess = new GuildAccessService({ guildGateway: gateway, isDevelopment: true });
     const devUser = { id: 'dev', isDev: true, discordGuilds: [] };
     const guilds = await devAccess.listManageableGuilds(devUser);
     assert.deepStrictEqual(guilds.map((g) => g.id).sort(), ['botguild1', 'botguild2']);
@@ -90,7 +80,7 @@ async function runGuildAccessTests() {
     assert.strictEqual(await devAccess.canManageGuild(normalUser, 'botguild2'), false);
 
     // Dev sessions must NOT grant access in non-development (live) mode.
-    const liveAccess = new GuildAccessService({ guildGateway: gateway, isDemo: false, isDevelopment: false });
+    const liveAccess = new GuildAccessService({ guildGateway: gateway, isDevelopment: false });
     assert.strictEqual(await liveAccess.canManageGuild(devUser, 'botguild1'), false);
   });
 

@@ -10,7 +10,7 @@ class AnalyticsPage {
     this.currentFilter = 'all';
     this.searchQuery = '';
     this.currentPage = 0;
-    this.pageSize = 15;
+    this.pageSize = window.MochiConstants.limits.analyticsPageSize;
     this.totalEntries = 0;
     this.searchDebounceTimer = null;
 
@@ -90,7 +90,7 @@ class AnalyticsPage {
       this.searchQuery = value.trim();
       this.currentPage = 0;
       this.fetchActivityLog();
-    }, 250);
+    }, window.MochiConstants.limits.searchDebounceMs);
   }
 
   prevPage() {
@@ -111,7 +111,7 @@ class AnalyticsPage {
     if (!this.currentGuildId) return;
 
     try {
-      const res = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/analytics?days=7`);
+      const res = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/analytics?days=${window.MochiConstants.limits.analyticsDays}`);
       const stats = res.analytics || [];
 
       const labels = stats.map(s => s.date);
@@ -135,7 +135,7 @@ class AnalyticsPage {
             {
               label: 'Joins',
               data: joinsData,
-              borderColor: '#3ba55d',
+              borderColor: window.MochiConstants.colors.success,
               backgroundColor: 'transparent',
               fill: false,
               tension: 0.3,
@@ -145,7 +145,7 @@ class AnalyticsPage {
             {
               label: 'Leaves',
               data: leavesData,
-              borderColor: '#d9534f',
+              borderColor: window.MochiConstants.colors.danger,
               backgroundColor: 'transparent',
               fill: false,
               tension: 0.3,
@@ -155,7 +155,7 @@ class AnalyticsPage {
             {
               label: 'Suspicious',
               data: fakesData,
-              borderColor: '#d9a441',
+              borderColor: window.MochiConstants.colors.warning,
               backgroundColor: 'transparent',
               fill: false,
               tension: 0.3,
@@ -169,18 +169,18 @@ class AnalyticsPage {
           maintainAspectRatio: false,
           plugins: {
             legend: {
-              labels: { color: '#b5bac1', font: { size: 12 } }
+              labels: { color: window.MochiConstants.colors.textSecondary, font: { size: 12 } }
             }
           },
           scales: {
             x: {
-              grid: { color: 'rgba(255, 255, 255, 0.05)' },
-              ticks: { color: '#80848e' }
+              grid: { color: window.MochiConstants.colors.chartGrid },
+              ticks: { color: window.MochiConstants.colors.textMuted }
             },
             y: {
               beginAtZero: true,
-              grid: { color: 'rgba(255, 255, 255, 0.05)' },
-              ticks: { color: '#80848e', precision: 0 }
+              grid: { color: window.MochiConstants.colors.chartGrid },
+              ticks: { color: window.MochiConstants.colors.textMuted, precision: 0 }
             }
           }
         }
@@ -332,7 +332,7 @@ class AnalyticsPage {
     } else {
       inviterContent = `
         <div class="member-profile-cell">
-          <img src="${this.escapeHtml(item.inviterAvatar)}" class="member-avatar-img" alt="" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+              <img src="${this.escapeHtml(item.inviterAvatar)}" class="member-avatar-img" alt="" onerror="this.src=window.MochiConstants.discord.defaultAvatar">
           <div class="member-meta-info">
             <span class="member-name-text">${this.escapeHtml(item.inviterName || 'Unknown')}</span>
             <span class="member-id-text">${this.escapeHtml(inviterId)}</span>
@@ -345,7 +345,7 @@ class AnalyticsPage {
       <tr>
         <td>
           <div class="member-profile-cell">
-            <img src="${this.escapeHtml(item.avatar)}" class="member-avatar-img" alt="" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+              <img src="${this.escapeHtml(item.avatar)}" class="member-avatar-img" alt="" onerror="this.src=window.MochiConstants.discord.defaultAvatar">
             <div class="member-meta-info">
               <span class="member-name-text">${this.escapeHtml(item.username)}</span>
               <span class="member-id-text">${this.escapeHtml(item.userId)}</span>

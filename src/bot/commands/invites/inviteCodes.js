@@ -1,5 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const embedBuilder = require('../../services/embedBuilder');
+const { DEFAULTS } = require('../../../config/defaults');
+const { discordInviteUrl } = require('../../../platform/discord/urls');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -44,16 +46,17 @@ module.exports = {
       }
 
       let description = '';
-      filtered.slice(0, 15).forEach(inv => {
+      const displayLimit = DEFAULTS.limits.pagination.botInviteCodesDefault;
+      filtered.slice(0, displayLimit).forEach(inv => {
         const creator = inv.inviter?.id ? `<@${inv.inviter.id}>` : 'Unknown';
         const max = inv.maxUses > 0 ? `/${inv.maxUses}` : '';
         const customLabel = inv.label;
         const labelText = customLabel ? ` **[🏷️ ${customLabel}]**` : '';
-        description += `🔗 **[discord.gg/${inv.code}](https://discord.gg/${inv.code})**${labelText} — \`${inv.uses}${max} uses\` • Created by ${creator}\n`;
+        description += `🔗 **[${discordInviteUrl(inv.code)}](${discordInviteUrl(inv.code)})**${labelText} — \`${inv.uses}${max} uses\` • Created by ${creator}\n`;
       });
 
-      if (filtered.length > 15) {
-        description += `\n*...and ${filtered.length - 15} more codes.*`;
+      if (filtered.length > displayLimit) {
+        description += `\n*...and ${filtered.length - displayLimit} more codes.*`;
       }
 
       const embed = embedBuilder.base({

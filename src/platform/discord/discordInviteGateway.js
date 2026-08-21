@@ -1,4 +1,5 @@
 const { ChannelType } = require('discord.js');
+const { DEFAULTS } = require('../../config/defaults');
 
 /**
  * Feature-oriented adapter between Discord.js invite objects and the invite
@@ -152,7 +153,7 @@ class DiscordInviteGateway {
     return null;
   }
 
-  async resolveUsers(userIds, { concurrency = 6 } = {}) {
+  async resolveUsers(userIds, { concurrency = DEFAULTS.operations.userResolveConcurrency } = {}) {
     const ids = [...new Set((userIds || []).filter(Boolean).map(String))];
     const result = new Map();
     let cursor = 0;

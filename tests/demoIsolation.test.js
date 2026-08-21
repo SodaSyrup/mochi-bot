@@ -4,12 +4,12 @@ const { createTestDb } = require('./helpers/db');
 const { createEventBus } = require('../src/app/eventBus');
 const { createServices } = require('../src/app/createServices');
 const { silentLogger } = require('./helpers/server');
-const { DemoGuildGateway } = require('../src/demo/demoGuildGateway');
-const { DemoInviteGateway } = require('../src/demo/demoInviteGateway');
-const { DemoSafetyGateway } = require('../src/demo/demoSafetyGateway');
-const { DemoInviteLogGateway } = require('../src/demo/demoInviteLogGateway');
+const { startTestServer, devLogin } = require('./helpers/server');
+const { DEMO_GUILD_ID } = require('./helpers/demo/fixtures');
+const { DiscordGuildGateway } = require('../src/platform/discord/discordGuildGateway');
+const { DiscordInviteGateway } = require('../src/platform/discord/discordInviteGateway');
+const { DiscordSafetyGateway } = require('../src/platform/discord/discordSafetyGateway');
 const { DiscordInviteLogGateway } = require('../src/platform/discord/discordInviteLogGateway');
-const { DEMO_GUILD_ID } = require('../src/demo/fixtures');
 
 function buildServices(mode) {
   const config = buildConfig({ ...process.env, APP_MODE: mode });
@@ -19,58 +19,35 @@ function buildServices(mode) {
 }
 
 async function runDemoIsolationTests() {
-  const suite = new TestSuite('Demo / Live Isolation');
+  const suite = new TestSuite('Live Composition');
 
-  suite.test('demo mode selects demo gateways during composition', () => {
-    const services = buildServices('demo');
-    assert.ok(services.guildGateway instanceof DemoGuildGateway);
-    assert.ok(services.inviteGateway instanceof DemoInviteGateway);
-    assert.ok(services.safetyGateway instanceof DemoSafetyGateway);
-    assert.ok(services.inviteLogGateway instanceof DemoInviteLogGateway);
-  });
-
-  suite.test('development/production modes select Discord gateways, never demo', () => {
+  suite.test('development composition always uses Discord gateways', () => {
     const services = buildServices('development');
-    assert.ok(!(services.guildGateway instanceof DemoGuildGateway));
-    assert.ok(!(services.inviteGateway instanceof DemoInviteGateway));
-    assert.ok(!(services.safetyGateway instanceof DemoSafetyGateway));
+    assert.ok(services.guildGateway instanceof DiscordGuildGateway);
+    assert.ok(services.inviteGateway instanceof DiscordInviteGateway);
+    assert.ok(services.safetyGateway instanceof DiscordSafetyGateway);
     assert.ok(services.inviteLogGateway instanceof DiscordInviteLogGateway);
-    assert.ok(!(services.inviteLogGateway instanceof DemoInviteLogGateway));
   });
 
-  suite.test('demo invite log gateway never touches a Discord client', async () => {
-    const services = buildServices('demo');
-    const ok = await services.inviteLogGateway.sendMessage('g', 'c', 'hello');
-    assert.strictEqual(ok, true);
-    assert.strictEqual(services.inviteLogGateway.sent.length, 1);
-    assert.strictEqual(await services.inviteLogGateway.findRecentBotAdder('g', 'b'), null);
+  suite.test('demo app mode is rejected', () => {
+    assert.throws(() => buildConfig({ APP_MODE: 'demo' }), /Invalid APP_MODE/);
   });
 
-  suite.test('live safety operation with no Discord connection errors instead of simulating', async () => {
+  suite.testAsync('live operations fail clearly when Discord is unavailable', async () => {
     const services = buildServices('development');
-    await assert.rejects(
-      services.safety.getOverview(DEMO_GUILD_ID),
-      /not available/i
-    );
-    await assert.rejects(
-      services.safety.listRules(DEMO_GUILD_ID),
-      /not available/i
-    );
+    await assert.rejects(services.safety.getOverview('guild'), /not available/i);
+    await assert.rejects(services.invites.createInvite({ guildId: 'guild', channelId: 'channel' }), /not in this guild/i);
   });
 
-  suite.test('live invite creation with no Discord connection fails loudly', async () => {
-    const services = buildServices('development');
-    await assert.rejects(
-      services.invites.createInvite({ guildId: DEMO_GUILD_ID, channelId: 'x' }),
-      /not in this guild/i
-    );
-  });
-
-  suite.test('demo safety operations succeed through demo gateways', async () => {
-    const services = buildServices('demo');
-    const overview = await services.safety.getOverview(DEMO_GUILD_ID);
-    assert.strictEqual(overview.isSimulated, true);
-    assert.strictEqual(overview.rulesCount, 4);
+  suite.testAsync('simulator page and endpoints no longer exist', async () => {
+    const live = await startTestServer({ mode: 'development', seed: false });
+    try {
+      assert.strictEqual((await fetch(`${live.baseUrl}/simulator`)).status, 404);
+      const auth = await devLogin(live.baseUrl);
+      assert.strictEqual((await fetch(`${live.baseUrl}/api/guilds/${DEMO_GUILD_ID}/simulate/join`, auth)).status, 404);
+    } finally {
+      await live.server.close();
+    }
   });
 
   return suite.run();

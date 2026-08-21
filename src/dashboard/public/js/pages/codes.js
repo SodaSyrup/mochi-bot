@@ -171,7 +171,7 @@ class CodesPage {
       tr.innerHTML = `
         <td>
           <div class="invite-link-cell">
-            <a class="mono invite-link" href="https://discord.gg/${safeCode}" target="_blank" rel="noopener">discord.gg/${safeCode}</a>
+            <a class="mono invite-link" href="${window.MochiConstants.discord.inviteBaseUrl}/${safeCode}" target="_blank" rel="noopener">discord.gg/${safeCode}</a>
             <button class="button-icon" title="Copy link" aria-label="Copy link" onclick="codesPage.copyInviteCode('${safeCode}')">
               <i class="fa-solid fa-copy" aria-hidden="true"></i>
             </button>
@@ -194,7 +194,7 @@ class CodesPage {
 
   async copyInviteCode(code) {
     try {
-      await navigator.clipboard.writeText(`https://discord.gg/${code}`);
+      await navigator.clipboard.writeText(`${window.MochiConstants.discord.inviteBaseUrl}/${code}`);
       window.Mochi.showToast([{ text: 'Copied invite link: ' }, { code: code }], 'success');
     } catch (e) {
       window.Mochi.showToast('Could not copy the invite link.', 'leave');
