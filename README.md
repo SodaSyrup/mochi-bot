@@ -59,6 +59,34 @@ Demo mode uses `data/mochi-demo.sqlite` so demo data never pollutes the live `da
 
 For the sandbox, run with `APP_MODE=demo` (e.g. in `.env`). Demo mode never connects to Discord and uses an isolated demo database.
 
+### Run with PM2
+
+Install the dependencies on the server, then start Mochi through the Bun runtime:
+
+```bash
+bun install --production
+bun run pm2:start
+bun run pm2:startup
+```
+
+Run the command printed by `pm2:startup` with the required system privileges.
+Then save the current process list:
+
+```bash
+bun run pm2:save
+```
+
+The ecosystem file keeps the process running, restarts it after crashes, and
+writes logs to `logs/pm2-out.log` and `logs/pm2-error.log`. Keep application
+settings and secrets in `.env`; after changing them, run:
+
+```bash
+bun run pm2:restart
+```
+
+Useful commands are `bun run pm2:logs`, `bun run pm2:stop`, and
+`bun run pm2:delete`.
+
 ## Invite Logs
 
 Invite logging is configured per guild from **Dashboard → Settings → Invite logs** (channel picker). When a channel is selected, Mochi posts plain-text logs there for member joins, leaves, and bot add/remove activity.
