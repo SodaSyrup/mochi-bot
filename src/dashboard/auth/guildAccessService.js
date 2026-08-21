@@ -51,6 +51,7 @@ class GuildAccessService {
     }
 
     const botGuilds = await this.gateway.listGuilds();
+    const botGuildById = new Map(botGuilds.map((guild) => [guild.id, guild]));
 
     // Development convenience login: no OAuth permission data exists, so the
     // development session may access every guild the bot is connected to.
@@ -71,19 +72,26 @@ class GuildAccessService {
       userGuilds = await this.permissionService.getCurrentGuildPermissions(session);
     }
 
-    const botGuildIds = new Set(botGuilds.map((g) => g.id));
-
     return userGuilds
-      .filter((g) => canManageGuild(g))
-      .filter((g) => botGuildIds.has(g.id))
+      .filter((g) => {
+        const botGuild = botGuildById.get(g.id);
+        if (!botGuild) return false;
+
+        // Discord's OAuth guild snapshot normally includes `owner`, but the
+        // bot's live guild object also exposes the authoritative ownerId. Use
+        // both so the server owner is recognized dynamically per guild without
+        // requiring a global OWNER_ID environment variable.
+        const isOwner = g.owner === true || botGuild.ownerId === sessionUser.id;
+        return isOwner || canManageGuild(g);
+      })
       .map((g) => {
-        const botGuild = botGuilds.find((b) => b.id === g.id);
+        const botGuild = botGuildById.get(g.id);
         return {
           id: g.id,
           name: g.name || botGuild?.name || 'Unknown',
           icon: g.icon || botGuild?.icon || null,
           memberCount: botGuild?.memberCount || 0,
-          ownerId: typeof g.owner === 'boolean' ? null : g.owner,
+          ownerId: botGuild?.ownerId || (g.owner ? sessionUser.id : null),
           isSimulated: false,
         };
       });

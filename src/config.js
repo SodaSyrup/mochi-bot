@@ -117,7 +117,6 @@ function buildConfig(env = process.env) {
       token,
       clientId,
       clientSecret,
-      ownerId: env.OWNER_ID || '',
       embedColor: env.EMBED_COLOR || '#7c3aed',
     },
     dashboard: {

@@ -46,6 +46,20 @@ async function runGuildAccessTests() {
     assert.strictEqual(await access.canManageGuild({}, 'a'), false);
   });
 
+  suite.test('server owner is recognized from the bot guild ownerId', async () => {
+    const gateway = {
+      async listGuilds() {
+        return [{ id: 'a', name: 'A', ownerId: 'server-owner' }];
+      },
+    };
+    const access = new GuildAccessService({ guildGateway: gateway, isDemo: false });
+    const owner = { id: 'server-owner', discordGuilds: [{ id: 'a', name: 'A', owner: false, permissions: '0' }] };
+    const nonOwner = { id: 'different-user', discordGuilds: [{ id: 'a', name: 'A', owner: false, permissions: '0' }] };
+
+    assert.strictEqual(await access.canManageGuild(owner, 'a'), true);
+    assert.strictEqual(await access.canManageGuild(nonOwner, 'a'), false);
+  });
+
   suite.test('demo mode only exposes the demo guild to the demo identity', async () => {
     const access = new GuildAccessService({ guildGateway: {}, isDemo: true });
     const demoUser = { id: 'x', isDemo: true };

@@ -54,9 +54,9 @@ function demoUser() {
  * GuildAccessService (there is no OAuth permission data in this mode). It is
  * never created in demo or production, and never without the explicit bypass.
  */
-function developmentUser(config) {
+function developmentUser() {
   return {
-    id: config.bot.ownerId || 'development_admin',
+    id: 'development_admin',
     username: 'Development Admin',
     discriminator: null,
     avatar: 'https://cdn.discordapp.com/embed/avatars/2.png',
@@ -99,7 +99,7 @@ function createAuthRoutes({ oauthClient, config, logger }) {
       const loopback = isLoopbackAddress(req.socket?.remoteAddress);
       if (bypassEnabled && loopback) {
         logger?.warn('auth', 'login', 'Development login: DEV_AUTH_BYPASS enabled, using development admin session (loopback only).');
-        req.session.user = developmentUser(config);
+        req.session.user = developmentUser();
         return res.redirect('/');
       }
       logger?.warn('auth', 'login', 'OAuth not configured; development bypass disabled or non-loopback request.');
