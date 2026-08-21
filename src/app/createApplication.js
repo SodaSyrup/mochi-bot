@@ -35,7 +35,13 @@ async function createApplication({ config, client = null, overrides = {} } = {})
     });
   }
 
-  const dashboard = new DashboardServer({ client: resolvedClient, services, config, logger });
+  const dashboard = new DashboardServer({
+    client: resolvedClient,
+    services,
+    config,
+    logger,
+    sessionStore: overrides.sessionStore,
+  });
 
   return { config, db, logger, eventBus, services, dashboard };
 }

@@ -6,6 +6,7 @@ const session = require('express-session');
 const morgan = require('morgan');
 
 const { SocketGateway } = require('./realtime/socketGateway');
+const { SqliteSessionStore } = require('./auth/sqliteSessionStore');
 const { createAuthRoutes } = require('./routes/authRoutes');
 const { createApiRouter } = require('./routes/api');
 const { apiErrorHandler, apiNotFound } = require('./routes/errorMiddleware');
@@ -16,7 +17,7 @@ const { apiErrorHandler, apiNotFound } = require('./routes/errorMiddleware');
  * It does not contain business logic.
  */
 class DashboardServer {
-  constructor({ client = null, services = null, config, logger }) {
+  constructor({ client = null, services = null, config, logger, sessionStore = null }) {
     this.client = client;
     this.services = services;
     this.config = config;
@@ -25,9 +26,11 @@ class DashboardServer {
     this.app = express();
     this.server = http.createServer(this.app);
 
+    this.sessionStore = sessionStore || new SqliteSessionStore({ path: config.dashboard.sessionStorePath });
     this.sessionMiddleware = session({
       name: 'mochi.sid',
       secret: config.dashboard.sessionSecret,
+      store: this.sessionStore,
       resave: false,
       saveUninitialized: false,
       cookie: {
@@ -126,6 +129,7 @@ class DashboardServer {
 
   stop() {
     this.io.close();
+    this.sessionStore?.close?.();
     if (!this.server.listening) return Promise.resolve();
     return new Promise((resolve, reject) => {
       this.server.close((error) => (error ? reject(error) : resolve()));

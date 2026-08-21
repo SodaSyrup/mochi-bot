@@ -178,7 +178,7 @@ Socket.IO forwards canonical application events to authorized guild rooms throug
 - All `/api/guilds/**` endpoints require authentication and per-guild authorization. `/api/stats` (non-sensitive global telemetry) and `/api/health` are intentionally public for operational health checks; everything else under `/api` is protected.
 - Socket.IO uses the shared Express session for authentication, and room membership is authorized per guild. Guild events are delivered only to the authorized guild room — never globally.
 - Session cookies are `httpOnly`, `sameSite=lax`, and `secure` in production with a non-default name (`mochi.sid`).
-- The Express MemoryStore session store is fine for local/single-instance development (sessions are lost on restart); replace it before horizontally scaled production deployment.
+- Sessions are stored server-side in the SQLite database at `SESSION_STORE_PATH` (default `./data/mochi-sessions.sqlite`), so PM2 restarts do not force users to log in again. The browser only receives the signed `mochi.sid` cookie; OAuth tokens never enter browser JavaScript. Keep the session database on persistent storage. For horizontally scaled deployments, use a shared session store instead of the local SQLite file.
 
 ## Database
 

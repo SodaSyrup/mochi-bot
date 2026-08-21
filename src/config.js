@@ -91,6 +91,7 @@ function buildConfig(env = process.env) {
 
   const databasePath = env.DATABASE_PATH || path.join(__dirname, '../data/mochi.sqlite');
   const demoSqlitePath = env.DEMO_DATABASE_PATH || path.join(__dirname, '../data/mochi-demo.sqlite');
+  const sessionStorePath = env.SESSION_STORE_PATH || path.join(__dirname, '../data/mochi-sessions.sqlite');
 
   const permissionTtlSeconds = parseInt(
     env.GUILD_PERMISSION_CACHE_TTL_SECONDS || String(DEFAULT_GUILD_PERMISSION_CACHE_TTL_SECONDS),
@@ -122,6 +123,7 @@ function buildConfig(env = process.env) {
     dashboard: {
       port: parseInt(env.PORT || '3000', 10),
       sessionSecret,
+      sessionStorePath,
       url: dashboardUrl,
       redirectUri,
     },
