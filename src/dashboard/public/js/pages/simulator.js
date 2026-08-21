@@ -5,6 +5,10 @@
 class SimulatorPage {
   constructor() {
     this.currentGuildId = null;
+    // The join endpoint generates the simulated member ID when the caller
+    // does not provide one. Keep the returned ID so the leave action targets
+    // the member that was actually created, rather than a made-up ID.
+    this.lastSimulatedMemberIds = new Map();
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => this.init());
@@ -52,17 +56,28 @@ class SimulatorPage {
         });
 
         if (data.success) {
+          const simulatedUserId = data.event?.user?.id;
+          if (simulatedUserId) {
+            this.lastSimulatedMemberIds.set(this.currentGuildId, simulatedUserId);
+          }
           window.Mochi.showToast([{ text: `Dispatched simulated ${isFake ? 'suspicious join' : 'join'} for ` }, { b: name }], 'success');
         } else {
           window.Mochi.showToast('Simulated join was a duplicate or no-op.', 'leave');
         }
       } else if (type === 'leave') {
+        const userId = this.lastSimulatedMemberIds.get(this.currentGuildId);
+        if (!userId) {
+          window.Mochi.showToast('Simulate a member join first.', 'leave');
+          return;
+        }
+
         const data = await apiFetch(`/api/guilds/${this.currentGuildId}/simulate/leave`, {
           method: 'POST',
-          body: { userId: 'mem_111111111111111111_0' }
+          body: { userId }
         });
 
         if (data.success) {
+          this.lastSimulatedMemberIds.delete(this.currentGuildId);
           window.Mochi.showToast('Dispatched simulated leave.', 'leave');
         } else {
           window.Mochi.showToast('Simulated leave was a duplicate or no-op.', 'leave');

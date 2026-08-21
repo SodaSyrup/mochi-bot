@@ -52,6 +52,11 @@ Demo mode uses `data/mochi-demo.sqlite` so demo data never pollutes the live `da
    bun run deploy-commands
    ```
 
+   The deployment registers Mochi as a guild-installed application with
+   guild-only command contexts. In the Discord Developer Portal, keep
+   **Guild Install** enabled and include both the `bot` and
+   `applications.commands` scopes in the default install settings.
+
 4. Start the application:
    ```bash
    bun dev
@@ -228,6 +233,20 @@ Then start Mochi normally and migration `001` creates the complete clean databas
 | `/ping` | WebSocket latency | Everyone |
 | `/help` | Command reference and dashboard link | Everyone |
 | `/honeypot <channel>` | Enable or move the softban honeypot | Manage Server |
+
+### Native Discord command permissions
+
+Mochi uses Discord application commands, so command access can be managed by
+Discord itself. After Mochi is installed in a server, open **Server Settings →
+Integrations → Mochi → Manage**. Members with **Manage Server** and **Manage
+Roles** (or administrators) can allow or deny commands for roles, members, and
+channels there.
+
+The registered defaults are `/invite-codes`, `/invite-label`, and `/honeypot`
+for **Manage Server**; the remaining commands are available to everyone by
+default. Discord’s per-command integration settings can then narrow or grant
+access as needed. Re-run `bun run deploy-commands` after changing command
+metadata.
 
 ### Honeypot
 

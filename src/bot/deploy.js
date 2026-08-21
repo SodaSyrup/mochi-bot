@@ -1,6 +1,7 @@
 const { REST, Routes } = require('discord.js');
 const config = require('../config');
 const { getFiles } = require('./handler');
+const { toDeployableCommandData } = require('./commandPolicy');
 const path = require('path');
 
 async function deployCommands() {
@@ -16,7 +17,7 @@ async function deployCommands() {
   for (const filePath of commandFiles) {
     const command = require(filePath);
     if (command.data && typeof command.data.toJSON === 'function') {
-      commands.push(command.data.toJSON());
+      commands.push(toDeployableCommandData(command));
     }
   }
 

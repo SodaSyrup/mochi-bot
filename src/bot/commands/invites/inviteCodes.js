@@ -1,10 +1,11 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const embedBuilder = require('../../services/embedBuilder');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('invite-codes')
     .setDescription('List all active invite codes for a specific member or the whole server')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addUserOption(option =>
       option.setName('user')
         .setDescription('Filter invites by user (leave empty for server summary)')
