@@ -50,7 +50,9 @@ function buildConfig(env = process.env) {
   const token = env.DISCORD_TOKEN || '';
   const clientId = env.CLIENT_ID || '';
   const clientSecret = env.CLIENT_SECRET || '';
-  const dashboardUrl = env.DASHBOARD_URL || 'http://localhost:3000';
+  // Keep the public origin canonical for CORS and derive the OAuth callback
+  // without accidentally producing a double slash.
+  const dashboardUrl = (env.DASHBOARD_URL || 'http://localhost:3000').replace(/\/+$/, '');
   const redirectUri = env.REDIRECT_URI || `${dashboardUrl}/auth/callback`;
 
   if (isProduction) {

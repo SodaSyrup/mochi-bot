@@ -44,6 +44,19 @@ async function runConfigTests() {
     assert.strictEqual(cfg.dashboard.sessionSecret, 'a-unique-secret');
   });
 
+  suite.test('dashboard URL trailing slash is normalized when deriving OAuth callback', () => {
+    const cfg = buildConfig({
+      APP_MODE: 'production',
+      DISCORD_TOKEN: 't',
+      CLIENT_ID: 'c',
+      CLIENT_SECRET: 's',
+      SESSION_SECRET: 'a-unique-secret',
+      DASHBOARD_URL: 'https://mochi.example.com/',
+    });
+    assert.strictEqual(cfg.dashboard.url, 'https://mochi.example.com');
+    assert.strictEqual(cfg.dashboard.redirectUri, 'https://mochi.example.com/auth/callback');
+  });
+
   suite.test('development with missing secret uses a random ephemeral secret', () => {
     const cfg = buildConfig({ APP_MODE: 'development', SESSION_SECRET: '' });
     assert.ok(cfg.dashboard.sessionSecret.length >= 32);
