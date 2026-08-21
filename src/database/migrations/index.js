@@ -1,19 +1,18 @@
-const fs = require('fs');
-const path = require('path');
+// Migration 001 is the released application baseline. Plugin metadata is
+// initialized idempotently alongside the baseline by pluginMigrationRunner,
+// which keeps this compatibility list stable for existing callers that inspect
+// the released application history.
+const migrations = [require('./001-initial')];
+const pluginSystemMigration = require('./002-plugin-system');
+const guildPluginSettingsMigration = require('./003-guild-plugin-settings');
 
-const migrations = [];
-const migrationsDir = __dirname;
-
-for (const file of fs.readdirSync(migrationsDir).sort()) {
-  if (!/^\d{3}-.+\.js$/.test(file)) continue;
-  const migration = require(path.join(migrationsDir, file));
+for (const migration of migrations) {
   if (!Number.isInteger(migration.version) || migration.version <= 0) {
-    throw new Error(`Migration ${file} must export a positive integer "version".`);
+    throw new Error(`Migration ${migration.name || 'unknown'} must export a positive integer "version".`);
   }
   if (typeof migration.up !== 'function') {
-    throw new Error(`Migration ${file} must export an "up(db)" function.`);
+    throw new Error(`Migration ${migration.name || 'unknown'} must export an "up(db)" function.`);
   }
-  migrations.push(migration);
 }
 
 // Detect duplicate/overlapping versions.
@@ -60,6 +59,13 @@ function runMigrations(db, { silent = false } = {}) {
     tx();
     if (!silent) console.log(`[Database] Applied migration ${migration.version} (${migration.name})`);
   }
+
+  // The plugin metadata table is infrastructure for namespaced migrations.
+  // It is deliberately not added to schema_migrations: that table remains the
+  // released application-baseline history, while plugin migrations have their
+  // own (plugin_id, version) ledger.
+  pluginSystemMigration.up(db);
+  guildPluginSettingsMigration.up(db);
 
   return pending.length;
 }

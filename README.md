@@ -58,7 +58,40 @@ The application runs in exactly one explicit mode, selected by `APP_MODE`:
    ```bash
    bun dev
    ```
-   The dashboard runs at `http://localhost:3000`.
+The dashboard runs at `http://localhost:3000`.
+
+## Built-in Plugins
+
+Mochi uses an explicit built-in plugin catalog. A plugin groups feature
+commands, Discord event handlers, services, dashboard routes and pages,
+realtime mappings, migrations, and lifecycle hooks. Mochi does not scan
+writable directories, install plugins at runtime, or load third-party plugin
+code.
+
+At startup the application validates every manifest, checks dependencies,
+registers contributions, runs enabled plugin migrations, and then starts
+plugins in dependency order. Shutdown stops successfully started plugins in
+reverse order, detaches their listeners, and continues cleanup if one stop
+hook fails.
+
+A plugin manifest contains an ID, name, version, API version, dependency list,
+and a `register(context)` function. Contributions are registered through the
+scoped `services`, `commands`, `discordEvents`, `dashboardApi`, `pages`, and
+`realtime` registries. IDs and command names must be unique; missing or
+circular dependencies fail startup.
+
+The initial catalog contains `utility`, `invites`, `invite-logs`, `safety`,
+and `honeypot`. Disable built-ins globally with a comma-separated
+`DISABLED_PLUGINS` value, for example `DISABLED_PLUGINS=honeypot,safety`.
+Dependencies are strict: disabling `invites` while `invite-logs` is enabled
+is a startup error. The dashboard also provides per-guild enable/disable
+controls for built-in plugins.
+
+Plugin migrations are namespaced by plugin ID and recorded in
+`plugin_schema_migrations`. They run in ascending version order, each migration
+and its record run in one transaction, and there are no automatic down
+migrations. Disabled plugins do not run migrations and their existing tables
+are never removed. Migration `001` remains unchanged.
 
 ### Run with PM2
 
@@ -201,7 +234,9 @@ bun run rebuild-projections -- --guild <guildId> --dry-run        # preview only
 Mochi uses versioned SQLite migrations. The new bot starts with one complete baseline migration; future production schema changes can be added as append-only migrations.
 
 - `001` — the complete current schema: durable invite ledger, projections, invite logs, invite cache/labels, guild settings, and bot attribution.
-- `002+` — future production schema changes. Migrations are append-only after the initial baseline.
+- `002` — namespaced plugin migration metadata.
+- `003` — per-guild plugin enablement settings.
+- `004+` — future production schema changes. Migrations are append-only after the initial baseline.
 
 Development databases are disposable while the bot is being built. Reset them explicitly when changing the baseline (this is a manual developer action, never something the application does at startup):
 
@@ -257,6 +292,14 @@ The bot needs `View Channel`, `Send Messages`, `Embed Links`, and `Ban Members` 
 - `/safety` — Discord AutoMod rules and server security settings
 - `/honeypot` — Configure the decoy channel and view its softban counter
 - `/settings` — Bot connection status and application configuration
+- `/plugins` — Enable or disable built-in plugins for the selected server
+
+Plugin switches are per-guild and require Manage Server access. A plugin is
+enabled by default unless a setting is saved for that guild. Dependencies are
+enforced when changing state, so a dependency must be enabled before its
+dependent plugin can be enabled, and dependents must be disabled first. The
+application-level `DISABLED_PLUGINS` setting always takes precedence and
+produces a locked plugin entry in the dashboard.
 
 ## Testing
 

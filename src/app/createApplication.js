@@ -5,6 +5,9 @@ const { createLogger } = require('./logger');
 const { createServices } = require('./createServices');
 const { resolveDatabasePath } = require('../config');
 const DashboardServer = require('../dashboard/server');
+const pluginCatalog = require('../plugins/catalog');
+const { ContributionRegistry } = require('../plugins/core/contributionRegistry');
+const { PluginManager } = require('../plugins/core/pluginManager');
 
 /**
  * Composition root. Builds config, database (migrated), event bus, services,
@@ -31,7 +34,28 @@ async function createApplication({ config, client = null, overrides = {} } = {})
     client: resolvedClient,
     logger,
     gatewayOverrides: overrides.gatewayOverrides,
+    pluginCatalog: overrides.plugins || pluginCatalog,
   });
+
+  const contributions = overrides.contributions || new ContributionRegistry({
+    baseServices: services,
+    serviceTarget: services,
+  });
+  const pluginManager = overrides.pluginManager || new PluginManager({
+    plugins: overrides.plugins || pluginCatalog,
+    config,
+    logger,
+    baseContext: {
+      client: resolvedClient,
+      services,
+      db,
+      eventBus,
+    },
+    contributions,
+  });
+  pluginManager.getEnabledPlugins();
+  if (!overrides.skipMigrations) pluginManager.runMigrations(db);
+  pluginManager.registerAll();
 
   const dashboard = new DashboardServer({
     client: resolvedClient,
@@ -39,9 +63,10 @@ async function createApplication({ config, client = null, overrides = {} } = {})
     config,
     logger,
     sessionStore: overrides.sessionStore,
+    contributions,
   });
 
-  return { config, db, logger, eventBus, services, dashboard };
+  return { config, db, logger, eventBus, services, dashboard, contributions, pluginManager };
 }
 
 module.exports = { createApplication };

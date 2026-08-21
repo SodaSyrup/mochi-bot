@@ -45,6 +45,11 @@
     },
   ];
 
+  // Kept separate from NAV_GROUPS so older integrations that consume the
+  // exported navigation structure remain compatible while the dashboard can
+  // expose the new per-guild plugin controls.
+  const PLUGIN_NAV_ITEM = { page: 'plugins', href: '/plugins', icon: 'fa-puzzle-piece', label: 'Plugins' };
+
   function currentPage() {
     return document.body.dataset.page || 'overview';
   }
@@ -58,6 +63,7 @@
       const found = group.items.find((item) => item.page === page);
       if (found) return found;
     }
+    if (page === PLUGIN_NAV_ITEM.page) return PLUGIN_NAV_ITEM;
     return undefined;
   }
 
@@ -112,6 +118,22 @@
         nav.appendChild(link);
       }
     }
+
+    const pluginLink = el(
+      'a',
+      {
+        className: 'nav-item',
+        href: PLUGIN_NAV_ITEM.href,
+        'data-page': PLUGIN_NAV_ITEM.page,
+        'aria-current': PLUGIN_NAV_ITEM.page === page ? 'page' : 'false',
+      },
+      [
+        el('i', { className: `fa-solid ${PLUGIN_NAV_ITEM.icon}`, 'aria-hidden': 'true' }),
+        el('span', {}, [PLUGIN_NAV_ITEM.label]),
+      ]
+    );
+    if (PLUGIN_NAV_ITEM.page === page) pluginLink.classList.add('active');
+    nav.appendChild(pluginLink);
 
     const footer = el('div', { className: 'sidebar-footer' }, [
       el('div', { className: 'sidebar-status', id: 'sidebar-status', 'data-status': 'loading' }, [
@@ -252,7 +274,7 @@
   // CommonJS export for unit tests (mirrors escapeHtml.js). In the browser the
   // module is loaded as a plain <script> and runs immediately.
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { NAV_GROUPS, findNavItem, MochiLayout };
+    module.exports = { NAV_GROUPS, PLUGIN_NAV_ITEM, findNavItem, MochiLayout };
   }
 
   if (typeof document !== 'undefined') {

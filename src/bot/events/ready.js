@@ -25,6 +25,7 @@ module.exports = {
     client.mochiPresenceInterval = setInterval(updatePresence, config.operations.presenceIntervalMs);
     client.mochiPresenceInterval.unref?.();
 
+    if (!services.invites) return;
     console.log(`[Bot] Initializing invite cache for ${client.guilds.cache.size} guilds...`);
     const guilds = [...client.guilds.cache.values()];
     const runBounded = async (operation, concurrency) => {
@@ -34,7 +35,9 @@ module.exports = {
         while (cursor < guilds.length) {
           const guild = guilds[cursor++];
           try {
-            await operation(guild.id);
+            if (!services.pluginSettings || services.pluginSettings.isEnabled(guild.id, 'invites')) {
+              await operation(guild.id);
+            }
           } catch (error) {
             failures.push({ guildId: guild.id, error });
             services.logger?.error?.('bot', 'guildInitialization', `Failed to initialize guild ${guild.id}`, {

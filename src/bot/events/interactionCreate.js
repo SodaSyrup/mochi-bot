@@ -11,6 +11,15 @@ module.exports = {
       return;
     }
 
+    const contribution = client.pluginContributions?.getCommandContribution?.(interaction.commandName);
+    if (contribution && interaction.guildId && client.services?.pluginSettings) {
+      const enabled = client.services.pluginSettings.isEnabled(interaction.guildId, contribution.pluginId);
+      if (!enabled) {
+        await interaction.reply({ content: 'This feature is disabled for this server.', ephemeral: true }).catch(() => {});
+        return;
+      }
+    }
+
     try {
       await command.execute(interaction, client);
     } catch (error) {

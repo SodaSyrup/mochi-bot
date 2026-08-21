@@ -18,11 +18,13 @@ const { GuildPermissionService } = require('../dashboard/auth/guildPermissionSer
 const { DiscordOAuthClient } = require('../dashboard/auth/discordOAuthClient');
 const { HoneypotRepository } = require('../features/honeypot/infrastructure/honeypotRepository');
 const { HoneypotService } = require('../features/honeypot/honeypotService');
+const { PluginGuildSettingsService } = require('../plugins/core/pluginGuildSettings');
+const defaultPluginCatalog = require('../plugins/catalog');
 
 /**
  * Compose all application services from a config + database + Discord client.
  */
-function createServices({ config, db, eventBus, client, logger, gatewayOverrides = {} }) {
+function createServices({ config, db, eventBus, client, logger, gatewayOverrides = {}, pluginCatalog = defaultPluginCatalog }) {
   const guildRepository = new GuildRepository(db, {
     defaultFakeThresholdDays: config.inviteTracker.fakeAccountThresholdDays,
   });
@@ -61,8 +63,16 @@ function createServices({ config, db, eventBus, client, logger, gatewayOverrides
     inviteLogGateway,
     eventBus,
     logger,
+    subscribe: !config.plugins?.disabled?.includes('invite-logs'),
   });
   const honeypot = new HoneypotService({ honeypotRepository, honeypotGateway, eventBus, logger });
+  const pluginSettings = new PluginGuildSettingsService({
+    db,
+    plugins: pluginCatalog,
+    globallyDisabled: config.plugins?.disabled || [],
+    logger,
+  });
+  inviteLogs.pluginSettings = pluginSettings;
 
   const oauthClient = new DiscordOAuthClient({
     clientId: config.bot.clientId,
@@ -98,6 +108,7 @@ function createServices({ config, db, eventBus, client, logger, gatewayOverrides
     safety,
     inviteLogs,
     honeypot,
+    pluginSettings,
     policy,
     guildAccess,
     guildPermissionService,

@@ -1,6 +1,7 @@
 const path = require('path');
 const crypto = require('crypto');
-const { DEFAULTS, DEFAULT_SECRET, LEGACY_ENV_KEYS } = require('./config/defaults');
+const { DEFAULTS, DEFAULT_SECRET, LEGACY_ENV_KEYS, BUILTIN_PLUGIN_IDS } = require('./config/defaults');
+const { PluginValidationError } = require('./plugins/core/errors');
 
 const APP_MODES = Object.freeze(['development', 'production']);
 
@@ -113,6 +114,8 @@ function buildConfig(env = process.env) {
     'FAKE_ACCOUNT_THRESHOLD_DAYS'
   );
 
+  const disabledPlugins = parseDisabledPlugins(env.DISABLED_PLUGINS);
+
   return {
     app: {
       mode,
@@ -120,6 +123,10 @@ function buildConfig(env = process.env) {
       isDevelopment,
       devAuthBypass,
       legacyEnvKeys,
+    },
+    plugins: {
+      disabled: disabledPlugins,
+      apiVersion: DEFAULTS.plugins.apiVersion,
     },
     bot: {
       token,
@@ -159,6 +166,20 @@ function buildConfig(env = process.env) {
   };
 }
 
+function parseDisabledPlugins(value) {
+  if (value === undefined || value === null || String(value).trim() === '') return [];
+  const ids = String(value).split(',').map((id) => id.trim()).filter(Boolean);
+  const seen = new Set();
+  for (const id of ids) {
+    if (seen.has(id)) throw new PluginValidationError(`[Config] DISABLED_PLUGINS contains duplicate plugin ID "${id}".`, { pluginId: id });
+    if (!BUILTIN_PLUGIN_IDS.includes(id)) {
+      throw new PluginValidationError(`[Config] DISABLED_PLUGINS contains unknown plugin ID "${id}".`, { pluginId: id });
+    }
+    seen.add(id);
+  }
+  return ids;
+}
+
 function parseIntegerInRange(value, fallback, min, max, name) {
   if (value === undefined || value === null || String(value).trim() === '') return fallback;
   const parsed = Number(value);
@@ -171,3 +192,4 @@ function parseIntegerInRange(value, fallback, min, max, name) {
 module.exports = buildConfig();
 module.exports.buildConfig = buildConfig;
 module.exports.resolveDatabasePath = resolveDatabasePath;
+module.exports.parseDisabledPlugins = parseDisabledPlugins;

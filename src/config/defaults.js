@@ -4,6 +4,7 @@
  * discoverable here instead of being repeated throughout the codebase.
  */
 const DEFAULTS = Object.freeze({
+  plugins: Object.freeze({ apiVersion: 1 }),
   app: Object.freeze({ mode: 'development' }),
   dashboard: Object.freeze({
     port: 3000,
@@ -45,7 +46,11 @@ const DEFAULTS = Object.freeze({
   honeypot: Object.freeze({ softBanDeleteMessageSeconds: 24 * 60 * 60 }),
 });
 
+// Kept in the configuration layer to validate DISABLED_PLUGINS without
+// importing plugin modules (some built-in commands import this config).
+const BUILTIN_PLUGIN_IDS = Object.freeze(['utility', 'invites', 'invite-logs', 'safety', 'honeypot']);
+
 const DEFAULT_SECRET = 'mochi_default_secret_please_change_in_production';
 const LEGACY_ENV_KEYS = Object.freeze(['DEMO_MODE', 'DEMO_DATABASE_PATH', 'DEFAULT_PREFIX']);
 
-module.exports = { DEFAULTS, DEFAULT_SECRET, LEGACY_ENV_KEYS };
+module.exports = { DEFAULTS, DEFAULT_SECRET, LEGACY_ENV_KEYS, BUILTIN_PLUGIN_IDS };

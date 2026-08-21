@@ -40,24 +40,38 @@ function usernameLabel(username, userId) {
  * never rolled back or made to look like it failed.
  */
 class InviteLogService {
-  constructor({ guildRepository, inviteLogRepository, inviteLogGateway, eventBus, logger }) {
+  constructor({ guildRepository, inviteLogRepository, inviteLogGateway, eventBus, logger, subscribe = true, pluginSettings = null }) {
     this.guilds = guildRepository;
     this.repo = inviteLogRepository;
     this.gateway = inviteLogGateway;
     this.eventBus = eventBus;
     this.logger = logger || console;
+    this.pluginSettings = pluginSettings;
 
-    if (this.eventBus) {
-      this.eventBus.on(InviteEvents.MemberJoined, (event) => {
+    this.subscriptionListeners = [];
+    if (this.eventBus && subscribe) {
+      const joinedListener = (event) => {
         void this.handleMemberJoined(event).catch((err) => {
           this.#log('handleMemberJoined', 'Invite log handler failed', { guildId: event?.guildId, error: err, level: 'error' });
         });
-      });
-      this.eventBus.on(InviteEvents.MemberLeft, (event) => {
+      };
+      const leftListener = (event) => {
         void this.handleMemberLeft(event).catch((err) => {
           this.#log('handleMemberLeft', 'Invite log handler failed', { guildId: event?.guildId, error: err, level: 'error' });
         });
-      });
+      };
+      this.eventBus.on(InviteEvents.MemberJoined, joinedListener);
+      this.eventBus.on(InviteEvents.MemberLeft, leftListener);
+      this.subscriptionListeners.push(
+        [InviteEvents.MemberJoined, joinedListener],
+        [InviteEvents.MemberLeft, leftListener]
+      );
+    }
+  }
+
+  detachSubscriptions() {
+    for (const [event, listener] of this.subscriptionListeners.splice(0)) {
+      this.eventBus?.off?.(event, listener);
     }
   }
 
@@ -84,6 +98,7 @@ class InviteLogService {
    */
   async handleMemberJoined(event) {
     if (!event?.guildId) return;
+    if (this.pluginSettings && !this.pluginSettings.isEnabled(event.guildId, 'invite-logs')) return;
     const channelId = this.#channelId(event.guildId);
     if (!channelId) return;
 
@@ -110,6 +125,7 @@ class InviteLogService {
 
   async handleMemberLeft(event) {
     if (!event?.guildId) return;
+    if (this.pluginSettings && !this.pluginSettings.isEnabled(event.guildId, 'invite-logs')) return;
     const channelId = this.#channelId(event.guildId);
     if (!channelId) return;
 

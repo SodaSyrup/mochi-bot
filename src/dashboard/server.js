@@ -10,6 +10,7 @@ const { SqliteSessionStore } = require('./auth/sqliteSessionStore');
 const { createAuthRoutes } = require('./routes/authRoutes');
 const { createApiRouter } = require('./routes/api');
 const { apiErrorHandler, apiNotFound } = require('./routes/errorMiddleware');
+const { PluginRegistrationError } = require('../plugins/core/errors');
 
 /**
  * Express + Socket.IO dashboard server. Owns HTTP middleware/session config,
@@ -17,11 +18,12 @@ const { apiErrorHandler, apiNotFound } = require('./routes/errorMiddleware');
  * It does not contain business logic.
  */
 class DashboardServer {
-  constructor({ client = null, services = null, config, logger, sessionStore = null }) {
+  constructor({ client = null, services = null, config, logger, sessionStore = null, contributions = null }) {
     this.client = client;
     this.services = services;
     this.config = config;
     this.logger = logger || console;
+    this.contributions = contributions;
 
     this.app = express();
     this.server = http.createServer(this.app);
@@ -59,6 +61,8 @@ class DashboardServer {
       eventBus: this.services?.eventBus,
       guildAccess: this.services?.guildAccess,
       logger: this.logger,
+      contributions: this.contributions,
+      pluginSettings: this.services?.pluginSettings,
     });
 
     this.setupRoutes();
@@ -89,6 +93,7 @@ class DashboardServer {
       client: this.client,
       config: this.config,
       services: this.services,
+      contributions: this.contributions,
     });
 
     this.app.use('/auth', authRoutes);
@@ -97,13 +102,29 @@ class DashboardServer {
     const pagesDir = path.join(__dirname, 'public', 'pages');
     const page = (file) => (req, res) => res.sendFile(path.join(pagesDir, file));
 
-    this.app.get('/', page('overview.html'));
-    this.app.get('/analytics', page('analytics.html'));
-    this.app.get('/leaderboard', page('leaderboard.html'));
-    this.app.get('/codes', page('codes.html'));
-    this.app.get('/safety', page('safety.html'));
-    this.app.get('/honeypot', page('honeypot.html'));
-    this.app.get('/settings', page('settings.html'));
+    const pageContributions = this.contributions?.getPageContributions?.() || [];
+    if (this.contributions) {
+      for (const descriptor of pageContributions) {
+        const resolved = path.resolve(pagesDir, descriptor.file);
+        if (!resolved.startsWith(`${pagesDir}${path.sep}`)) {
+          throw new PluginRegistrationError(`Dashboard page "${descriptor.id}" resolves outside the approved pages directory.`, {
+            pluginId: descriptor.pluginId,
+          });
+        }
+        this.app.get(descriptor.path, page(descriptor.file));
+      }
+    } else {
+      // Compatibility path for direct DashboardServer construction without a
+      // plugin registry; normal application startup uses page contributions.
+      this.app.get('/', page('overview.html'));
+      this.app.get('/analytics', page('analytics.html'));
+      this.app.get('/leaderboard', page('leaderboard.html'));
+      this.app.get('/codes', page('codes.html'));
+      this.app.get('/safety', page('safety.html'));
+      this.app.get('/honeypot', page('honeypot.html'));
+      this.app.get('/settings', page('settings.html'));
+    }
+    this.app.get('/plugins', page('plugins.html'));
 
     // JSON 404 for unknown API endpoints, HTML 404 for everything else.
     this.app.use('/api', apiNotFound);
@@ -131,6 +152,7 @@ class DashboardServer {
   }
 
   stop() {
+    this.socketGateway?.stop?.();
     this.io.close();
     this.sessionStore?.close?.();
     if (!this.server.listening) return Promise.resolve();

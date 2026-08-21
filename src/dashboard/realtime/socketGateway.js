@@ -15,26 +15,33 @@ function guildRoom(guildId) {
  * broadcasts. Session identity (never client-supplied) drives authorization.
  */
 class SocketGateway {
-  constructor({ io, eventBus, guildAccess, logger }) {
+  constructor({ io, eventBus, guildAccess, logger, contributions = null, pluginSettings = null }) {
     this.io = io;
     this.eventBus = eventBus;
     this.guildAccess = guildAccess;
     this.logger = logger || console;
+    this.pluginSettings = pluginSettings;
 
-    // application event -> socket event name
-    this.forwarders = new Map([
-      [InviteEvents.MemberJoined, 'memberJoin'],
-      [InviteEvents.MemberLeft, 'memberLeave'],
-      [InviteEvents.InviteCreated, 'inviteCreated'],
-      [InviteEvents.InviteDeleted, 'inviteDeleted'],
-      [InviteEvents.LabelUpdated, 'inviteLabelUpdated'],
-      [SafetyEvents.AutoModExecution, 'autoModExecution'],
-      [SafetyEvents.AutoModRuleUpdated, 'autoModRuleUpdated'],
-      [HoneypotEvents.Triggered, 'honeypotTriggered'],
-    ]);
+    this.subscriptions = [];
+    const pluginMappings = contributions?.getRealtimeContributions?.() || [];
+    const mappings = contributions
+      ? pluginMappings
+      : [
+        { applicationEvent: InviteEvents.MemberJoined, socketEvent: 'memberJoin', map: (data) => mapApplicationEvent(InviteEvents.MemberJoined, data), pluginId: 'core-compat' },
+        { applicationEvent: InviteEvents.MemberLeft, socketEvent: 'memberLeave', map: (data) => mapApplicationEvent(InviteEvents.MemberLeft, data), pluginId: 'core-compat' },
+        { applicationEvent: InviteEvents.InviteCreated, socketEvent: 'inviteCreated', map: (data) => mapApplicationEvent(InviteEvents.InviteCreated, data), pluginId: 'core-compat' },
+        { applicationEvent: InviteEvents.InviteDeleted, socketEvent: 'inviteDeleted', map: (data) => mapApplicationEvent(InviteEvents.InviteDeleted, data), pluginId: 'core-compat' },
+        { applicationEvent: InviteEvents.LabelUpdated, socketEvent: 'inviteLabelUpdated', map: (data) => mapApplicationEvent(InviteEvents.LabelUpdated, data), pluginId: 'core-compat' },
+        { applicationEvent: SafetyEvents.AutoModExecution, socketEvent: 'autoModExecution', map: (data) => mapApplicationEvent(SafetyEvents.AutoModExecution, data), pluginId: 'core-compat' },
+        { applicationEvent: SafetyEvents.AutoModRuleUpdated, socketEvent: 'autoModRuleUpdated', map: (data) => mapApplicationEvent(SafetyEvents.AutoModRuleUpdated, data), pluginId: 'core-compat' },
+        { applicationEvent: HoneypotEvents.Triggered, socketEvent: 'honeypotTriggered', map: (data) => mapApplicationEvent(HoneypotEvents.Triggered, data), pluginId: 'core-compat' },
+      ];
 
-    for (const [appEvent, socketEvent] of this.forwarders) {
-      this.eventBus.on(appEvent, (data) => this.#forwardGuildEvent(appEvent, socketEvent, data));
+    this.forwarders = new Map(mappings.map((mapping) => [mapping.applicationEvent, mapping.socketEvent]));
+    for (const mapping of mappings) {
+      const listener = (data) => this.#forwardGuildEvent(mapping, data);
+      this.eventBus.on(mapping.applicationEvent, listener);
+      this.subscriptions.push({ event: mapping.applicationEvent, listener, pluginId: mapping.pluginId });
     }
 
     this.#wireConnections();
@@ -90,10 +97,23 @@ class SocketGateway {
     this.#respond(ack, { success: true });
   }
 
-  #forwardGuildEvent(appEvent, socketEvent, data) {
-    if (!data || !data.guildId) return;
-    const payload = mapApplicationEvent(appEvent, data);
-    this.io.to(guildRoom(data.guildId)).emit(socketEvent, payload);
+  #forwardGuildEvent(mapping, data) {
+    const guildId = mapping.getGuildId ? mapping.getGuildId(data) : data?.guildId;
+    if (!data || !guildId) return;
+    const forward = async () => {
+      if (mapping.pluginId !== 'core-compat' && this.pluginSettings && !this.pluginSettings.isEnabled(guildId, mapping.pluginId)) return;
+      const payload = mapping.map(data);
+      this.io.to(guildRoom(guildId)).emit(mapping.socketEvent, payload);
+    };
+    forward().catch((error) => {
+      this.logger.error?.('realtime', mapping.pluginId, 'Realtime mapping failed', { error });
+    });
+  }
+
+  stop() {
+    for (const subscription of this.subscriptions.splice(0)) {
+      this.eventBus.off?.(subscription.event, subscription.listener);
+    }
   }
 }
 
