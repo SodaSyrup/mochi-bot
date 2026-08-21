@@ -18,6 +18,7 @@ module.exports = {
             '`/invites [user]` — View detailed personal or target member invite counts',
             '`/leaderboard [page]` — Top inviters leaderboard in this server',
             '`/invite-codes [user]` — List active server invite links & uses',
+            '`/honeypot <channel>` — Protect a channel from spam bots',
             '`/botinfo` — Bot telemetry and system uptime',
             '`/ping` — Check latency and gateway status'
           ].join('\n')

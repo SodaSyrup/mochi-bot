@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mochi · Honeypot</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍡</text></svg>">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body data-page="honeypot">
+  <div id="app">
+    <div id="sidebar-root"></div>
+    <main class="main-content">
+      <div id="topbar-root"></div>
+      <div class="page-container">
+        <section id="honeypot-view" class="view-section active">
+          <div class="page-header">
+            <div>
+              <h2>Honeypot</h2>
+              <p>Protect a decoy channel from spam bots and accidental messages.</p>
+            </div>
+            <div class="page-actions">
+              <button class="button button-secondary" onclick="honeypotPage.refresh()"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Refresh</button>
+            </div>
+          </div>
+
+          <div class="metrics">
+            <div class="metric">
+              <div class="metric-label">Status</div>
+              <div class="metric-value metric-value-sm" id="honeypot-status">—</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Kicks</div>
+              <div class="metric-value" id="honeypot-kicks">—</div>
+              <div class="metric-label metric-sub">Successful softbans</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Protected channel</div>
+              <div class="metric-value metric-value-sm" id="honeypot-channel">—</div>
+            </div>
+          </div>
+
+          <div class="honeypot-layout">
+            <section class="section">
+              <div class="section-header">
+                <div>
+                  <h3 class="section-title">Configuration</h3>
+                  <p class="section-description">Messages in the selected channel trigger a softban.</p>
+                </div>
+              </div>
+              <div class="panel panel-narrow">
+                <form id="honeypot-form" onsubmit="honeypotPage.save(event)">
+                  <div class="form-group">
+                    <label class="form-label" for="honeypot-channel-select">Honeypot channel</label>
+                    <select id="honeypot-channel-select" class="form-control">
+                      <option value="">No channel selected</option>
+                    </select>
+                    <div class="form-help">Choose a text or announcement channel. Mochi will post and pin a warning banner there.</div>
+                  </div>
+                  <div class="page-actions">
+                    <button type="submit" class="button button-primary" id="btn-save-honeypot"><i class="fa-solid fa-flask-vial" aria-hidden="true"></i> Enable honeypot</button>
+                    <button type="button" class="button button-danger" id="btn-disable-honeypot" onclick="honeypotPage.disable()">Disable</button>
+                  </div>
+                </form>
+              </div>
+            </section>
+
+            <section class="section">
+              <div class="section-header">
+                <div>
+                  <h3 class="section-title">Channel banner</h3>
+                  <p class="section-description">This is the warning Mochi keeps pinned in Discord.</p>
+                </div>
+              </div>
+              <div class="panel honeypot-preview-panel">
+                <div class="honeypot-preview">
+                  <div class="honeypot-preview-icon" aria-hidden="true">🍯</div>
+                  <div class="honeypot-preview-body">
+                    <div class="honeypot-preview-title">DO NOT SEND MESSAGES IN THIS CHANNEL</div>
+                    <p>This channel is used to catch spam bots. Any messages sent here will result in a <strong>softban</strong>.</p>
+                    <div class="honeypot-kick-pill"><span aria-hidden="true">🍯</span> Kicks: <strong id="honeypot-preview-kicks">0</strong></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <section class="section">
+            <div class="section-header">
+              <div>
+                <h3 class="section-title">Recently kicked players</h3>
+                <p class="section-description">The latest members and bots removed by the honeypot.</p>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="honeypot-kick-list" id="honeypot-kick-list">
+                <div class="loading-row">Loading recent kicks…</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="honeypot-permissions-section" hidden>
+            <div class="panel honeypot-note">
+              <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+              <div>
+                <strong>Required permissions</strong>
+                <p id="honeypot-permissions-copy">Mochi is missing permissions required to operate this honeypot.</p>
+              </div>
+            </div>
+          </section>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="overlay-root"></div>
+  <div id="toast-container"></div>
+
+  <script src="/js/escapeHtml.js"></script>
+  <script src="/js/layout.js"></script>
+  <script src="/js/shared.js"></script>
+  <script src="/js/pages/honeypot.js"></script>
+</body>
+</html>

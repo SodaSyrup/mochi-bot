@@ -8,6 +8,7 @@ A lightweight Discord invite tracking bot with a live web dashboard, built for B
 - **Invite logs**: post member joins, leaves, and bot add/remove activity to a configurable Discord channel from Dashboard → Settings. Human joins show the inviter and the updated net invite total; bots use separate messages and never count as invites.
 - **Invite campaign labels**: assign custom labels to invite codes (e.g. `twitter-campaign`, `youtube-promo`) via `/invite-label` or the dashboard to track where traffic comes from.
 - **Safety & AutoMod**: view and configure Discord AutoMod rules directly from the dashboard (keyword filters, mention spam, spam presets, member profiles, server verification levels).
+- **Honeypot moderation**: assign a Discord channel where messages trigger a softban and maintain a persistent in-channel kick counter.
 - **Web dashboard**: live event feed over authorized Socket.IO rooms, 7-day join/leave charts, invite code manager, server safety controls, and a built-in simulator for sandbox testing.
 - **Secure by default**: Discord OAuth with state validation, per-guild authorization, authenticated Socket.IO, and no global guild broadcasts.
 - **Fast & light**: uses Bun's native `bun:sqlite` driver with WAL mode for fast local storage.
@@ -226,6 +227,13 @@ Then start Mochi normally and migration `001` creates the complete clean databas
 | `/botinfo` | Bot system telemetry and uptime | Everyone |
 | `/ping` | WebSocket latency | Everyone |
 | `/help` | Command reference and dashboard link | Everyone |
+| `/honeypot <channel>` | Enable or move the softban honeypot | Manage Server |
+
+### Honeypot
+
+Use `/honeypot #channel` to assign a text channel. Mochi posts and pins a warning banner there, then softbans members who send messages in it (a ban followed by an immediate unban removes the member and recent messages without keeping a permanent ban). The banner is edited after each successful trigger and its kick count is stored in SQLite.
+
+The bot needs `View Channel`, `Send Messages`, `Embed Links`, and `Ban Members` in the honeypot channel/server. Enable Discord's **Message Content Intent** for the application, since the feature listens for message creation events.
 
 ## Dashboard Pages
 
@@ -234,6 +242,7 @@ Then start Mochi normally and migration `001` creates the complete clean databas
 - `/leaderboard` — Complete server inviter rankings
 - `/codes` — Active invite codes with usage counters and custom labels
 - `/safety` — Discord AutoMod rules and server security settings
+- `/honeypot` — Configure the decoy channel and view its softban counter
 - `/settings` — Bot connection status and application configuration
 - `/simulator` — Sandbox test bench to simulate member joins, leaves, and AutoMod triggers
 

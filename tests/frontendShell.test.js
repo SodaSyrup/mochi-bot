@@ -20,6 +20,7 @@ async function runFrontendShellTests() {
       leaderboard: '/leaderboard',
       codes: '/codes',
       safety: '/safety',
+      honeypot: '/honeypot',
       simulator: '/simulator',
       settings: '/settings',
     });
@@ -29,6 +30,7 @@ async function runFrontendShellTests() {
     assert.strictEqual(findNavItem('overview').label, 'Overview');
     assert.strictEqual(findNavItem('analytics').href, '/analytics');
     assert.strictEqual(findNavItem('safety').label, 'Safety');
+    assert.strictEqual(findNavItem('honeypot').href, '/honeypot');
     assert.strictEqual(findNavItem('codes').label, 'Invite links');
     assert.strictEqual(findNavItem('nope'), undefined);
   });

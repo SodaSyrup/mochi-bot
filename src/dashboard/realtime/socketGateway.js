@@ -1,4 +1,4 @@
-const { InviteEvents, SafetyEvents } = require('../../app/eventBus');
+const { InviteEvents, SafetyEvents, HoneypotEvents } = require('../../app/eventBus');
 const { mapApplicationEvent } = require('./eventMappers');
 const { UnauthorizedError } = require('../errors');
 
@@ -30,6 +30,7 @@ class SocketGateway {
       [InviteEvents.LabelUpdated, 'inviteLabelUpdated'],
       [SafetyEvents.AutoModExecution, 'autoModExecution'],
       [SafetyEvents.AutoModRuleUpdated, 'autoModRuleUpdated'],
+      [HoneypotEvents.Triggered, 'honeypotTriggered'],
     ]);
 
     for (const [appEvent, socketEvent] of this.forwarders) {

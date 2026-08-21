@@ -17,6 +17,8 @@ const EXPECTED_TABLES = [
   'invite_events',
   'invite_bonus_adjustments',
   'bot_attributions',
+  'honeypot_settings',
+  'honeypot_kicks',
 ];
 
 const EXPECTED_VIEWS = ['inviter_stats'];
@@ -28,6 +30,8 @@ const EXPECTED_INDEXES = [
   'idx_invite_events_guild_inviter',
   'idx_invite_events_guild_user',
   'idx_bonus_adjustments_guild_user',
+  'idx_honeypot_settings_channel',
+  'idx_honeypot_kicks_guild_channel_time',
 ];
 
 function objectNames(db, type) {

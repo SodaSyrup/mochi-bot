@@ -99,6 +99,7 @@ class DashboardServer {
     this.app.get('/leaderboard', page('leaderboard.html'));
     this.app.get('/codes', page('codes.html'));
     this.app.get('/safety', page('safety.html'));
+    this.app.get('/honeypot', page('honeypot.html'));
     this.app.get('/simulator', page('simulator.html'));
     this.app.get('/settings', page('settings.html'));
 

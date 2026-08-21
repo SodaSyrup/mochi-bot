@@ -30,4 +30,8 @@ const SafetyEvents = Object.freeze({
   AutoModRuleUpdated: 'safety.autoModRuleUpdated',
 });
 
-module.exports = { createEventBus, InviteEvents, SafetyEvents };
+const HoneypotEvents = Object.freeze({
+  Triggered: 'honeypot.triggered',
+});
+
+module.exports = { createEventBus, InviteEvents, SafetyEvents, HoneypotEvents };

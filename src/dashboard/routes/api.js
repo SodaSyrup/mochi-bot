@@ -7,6 +7,7 @@ const { createGuildRoutes } = require('./guildRoutes');
 const { createInviteRoutes } = require('./inviteRoutes');
 const { createSafetyRoutes } = require('./safetyRoutes');
 const { createSimulatorRoutes } = require('./simulatorRoutes');
+const { createHoneypotRoutes } = require('./honeypotRoutes');
 
 /**
  * Aggregator router. Mounts feature routers; applies authentication and per-
@@ -31,6 +32,10 @@ function createApiRouter({ client, config, services }) {
 
   router.use('/guilds/:guildId/invites', ...guildScoped, createInviteRoutes({ inviteService: services.invites }));
   router.use('/guilds/:guildId/safety', ...guildScoped, createSafetyRoutes({ safetyService: services.safety }));
+  router.use('/guilds/:guildId/honeypot', ...guildScoped, createHoneypotRoutes({
+    honeypotService: services.honeypot,
+    guildService: services.guilds,
+  }));
   router.use('/guilds/:guildId/simulate', ...guildScoped, createSimulatorRoutes({ inviteService: services.invites, safetyService: services.safety }));
 
   return router;

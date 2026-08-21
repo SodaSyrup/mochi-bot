@@ -197,6 +197,39 @@ async function runApiTests() {
     assert.ok(rolesData.roles.length > 0);
   });
 
+  suite.testAsync('honeypot dashboard endpoint reads, configures, and disables', async () => {
+    const withAuth = { headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie } };
+
+    const initial = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/honeypot`, withAuth);
+    assert.strictEqual(initial.status, 200);
+    assert.strictEqual((await initial.json()).honeypot, null);
+
+    const configured = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/honeypot`, {
+      method: 'PATCH',
+      headers: withAuth.headers,
+      body: JSON.stringify({ channelId: 'chan_general' }),
+    });
+    assert.strictEqual(configured.status, 200);
+    const configuredData = await configured.json();
+    assert.strictEqual(configuredData.honeypot.channel_id, 'chan_general');
+    assert.strictEqual(configuredData.honeypot.kicks, 0);
+    assert.deepStrictEqual(configuredData.recentKicks, []);
+    assert.deepStrictEqual(configuredData.permissions, {
+      viewChannel: true,
+      sendMessages: true,
+      embedLinks: true,
+      banMembers: true,
+    });
+
+    const disabled = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/honeypot`, {
+      method: 'PATCH',
+      headers: withAuth.headers,
+      body: JSON.stringify({ channelId: null }),
+    });
+    assert.strictEqual(disabled.status, 200);
+    assert.strictEqual((await disabled.json()).honeypot, null);
+  });
+
   suite.testAsync('create/label/revoke invite lifecycle', async () => {
     const withAuth = { headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie } };
     const created = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites`, {

@@ -30,7 +30,10 @@
     },
     {
       label: 'Moderation',
-      items: [{ page: 'safety', href: '/safety', icon: 'fa-shield-halved', label: 'Safety' }],
+      items: [
+        { page: 'safety', href: '/safety', icon: 'fa-shield-halved', label: 'Safety' },
+        { page: 'honeypot', href: '/honeypot', icon: 'fa-jar', label: 'Honeypot' },
+      ],
     },
     {
       label: 'System',

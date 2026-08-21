@@ -69,7 +69,8 @@ class MochiSharedCore {
       inviteLabelUpdated: [],
       inviteDeleted: [],
       autoModExecution: [],
-      autoModRuleUpdated: []
+      autoModRuleUpdated: [],
+      honeypotTriggered: []
     };
 
     // Auto-initialize when DOM is ready
@@ -167,6 +168,10 @@ class MochiSharedCore {
 
     this.socket.on('autoModRuleUpdated', (payload) => {
       this.triggerRealtime('autoModRuleUpdated', payload);
+    });
+
+    this.socket.on('honeypotTriggered', (payload) => {
+      this.triggerRealtime('honeypotTriggered', payload);
     });
   }
 

@@ -104,6 +104,136 @@
   margin: 12px 0 24px;
 }
 
+/* -------------------------------------------------------------- honeypot */
+.honeypot-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.85fr);
+  gap: 24px;
+}
+
+.honeypot-preview-panel {
+  min-height: 208px;
+  display: flex;
+  align-items: center;
+}
+
+.honeypot-preview {
+  width: 100%;
+  display: flex;
+  gap: 14px;
+  padding: 18px;
+  background: #1a1b1d;
+  border: 1px solid #383a3d;
+  border-radius: var(--radius-md);
+}
+
+.honeypot-preview-icon {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.honeypot-preview-body {
+  min-width: 0;
+}
+
+.honeypot-preview-title {
+  color: #f0f0f1;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.honeypot-preview p {
+  color: #b5b7ba;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 10px 0 14px;
+}
+
+.honeypot-kick-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  color: #d8d9db;
+  background: #2b2d30;
+  border: 1px solid #45474b;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+
+.honeypot-note {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  color: var(--text-secondary);
+}
+
+.honeypot-note > i {
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+.honeypot-note strong {
+  color: var(--text-primary);
+  font-size: 13.5px;
+}
+
+.honeypot-note p {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+.honeypot-kick-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.honeypot-kick-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.honeypot-kick-row:last-child {
+  border-bottom: none;
+}
+
+.honeypot-kick-identity {
+  min-width: 0;
+}
+
+.honeypot-kick-name {
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.honeypot-kick-id,
+.honeypot-kick-time {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.honeypot-kick-time {
+  flex-shrink: 0;
+  margin-top: 0;
+}
+
+@media (max-width: 900px) {
+  .honeypot-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ------------------------------------------------------------- simulator */
 .sim-rows {
   display: flex;

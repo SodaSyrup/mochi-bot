@@ -11,15 +11,19 @@ const { DiscordInviteGateway } = require('../platform/discord/discordInviteGatew
 const { DiscordGuildGateway } = require('../platform/discord/discordGuildGateway');
 const { DiscordSafetyGateway } = require('../platform/discord/discordSafetyGateway');
 const { DiscordInviteLogGateway } = require('../platform/discord/discordInviteLogGateway');
+const { DiscordHoneypotGateway } = require('../platform/discord/discordHoneypotGateway');
 
 const { DemoInviteGateway } = require('../demo/demoInviteGateway');
 const { DemoGuildGateway } = require('../demo/demoGuildGateway');
 const { DemoSafetyGateway } = require('../demo/demoSafetyGateway');
 const { DemoInviteLogGateway } = require('../demo/demoInviteLogGateway');
+const { DemoHoneypotGateway } = require('../demo/demoHoneypotGateway');
 
 const { GuildAccessService } = require('../dashboard/auth/guildAccessService');
 const { GuildPermissionService } = require('../dashboard/auth/guildPermissionService');
 const { DiscordOAuthClient } = require('../dashboard/auth/discordOAuthClient');
+const { HoneypotRepository } = require('../features/honeypot/infrastructure/honeypotRepository');
+const { HoneypotService } = require('../features/honeypot/honeypotService');
 
 /**
  * Compose all application services from a config + database + (optional)
@@ -32,22 +36,26 @@ function createServices({ config, db, eventBus, client, logger }) {
   });
   const inviteRepository = new InviteRepository(db);
   const inviteLogRepository = new InviteLogRepository(db);
+  const honeypotRepository = new HoneypotRepository(db);
 
   let guildGateway;
   let inviteGateway;
   let safetyGateway;
   let inviteLogGateway;
+  let honeypotGateway;
 
   if (config.app.isDemo) {
     guildGateway = new DemoGuildGateway();
     inviteGateway = new DemoInviteGateway();
     safetyGateway = new DemoSafetyGateway({ eventBus });
     inviteLogGateway = new DemoInviteLogGateway();
+    honeypotGateway = new DemoHoneypotGateway();
   } else {
     guildGateway = new DiscordGuildGateway({ client, logger });
     inviteGateway = new DiscordInviteGateway({ client, logger });
     safetyGateway = new DiscordSafetyGateway({ client, logger });
     inviteLogGateway = new DiscordInviteLogGateway({ client, logger });
+    honeypotGateway = new DiscordHoneypotGateway({ client, logger });
   }
 
   const policy = createInvitePolicy();
@@ -69,6 +77,7 @@ function createServices({ config, db, eventBus, client, logger }) {
     eventBus,
     logger,
   });
+  const honeypot = new HoneypotService({ honeypotRepository, honeypotGateway, eventBus, logger });
 
   const oauthClient = new DiscordOAuthClient({
     clientId: config.bot.clientId,
@@ -94,14 +103,17 @@ function createServices({ config, db, eventBus, client, logger }) {
     guildRepository,
     inviteRepository,
     inviteLogRepository,
+    honeypotRepository,
     guildGateway,
     inviteGateway,
     safetyGateway,
     inviteLogGateway,
+    honeypotGateway,
     guilds,
     invites,
     safety,
     inviteLogs,
+    honeypot,
     policy,
     guildAccess,
     guildPermissionService,

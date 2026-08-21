@@ -1,5 +1,5 @@
 const { TestSuite, assert } = require('./helpers/harness');
-const { InviteEvents, SafetyEvents } = require('../src/app/eventBus');
+const { InviteEvents, SafetyEvents, HoneypotEvents } = require('../src/app/eventBus');
 const {
   mapMemberEvent,
   mapInviteCreatedEvent,
@@ -7,6 +7,7 @@ const {
   mapLabelUpdatedEvent,
   mapAutoModExecutionEvent,
   mapRuleUpdatedEvent,
+  mapHoneypotTriggeredEvent,
   mapApplicationEvent,
 } = require('../src/dashboard/realtime/eventMappers');
 
@@ -106,6 +107,9 @@ async function runRealtimeContractTests() {
 
     const exec = mapApplicationEvent(SafetyEvents.AutoModExecution, { guildId: 'g', ruleName: 'R', action: { type: 1 }, executedAt: 'x' });
     assert.strictEqual(exec.ruleName, 'R');
+
+    const honeypot = mapHoneypotTriggeredEvent({ guildId: 'g', channelId: 'c1', kicks: 8, occurredAt: 'x' });
+    assert.deepStrictEqual(mapApplicationEvent(HoneypotEvents.Triggered, honeypot), honeypot);
 
     // Unknown event passes through unchanged (defensive).
     assert.deepStrictEqual(mapApplicationEvent('nope.evt', { a: 1 }), { a: 1 });

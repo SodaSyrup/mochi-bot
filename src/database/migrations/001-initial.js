@@ -34,6 +34,15 @@ module.exports = {
         PRIMARY KEY (guild_id, bot_user_id)
       );
 
+      CREATE TABLE honeypot_settings (
+        guild_id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        banner_message_id TEXT,
+        kicks INTEGER NOT NULL DEFAULT 0 CHECK (kicks >= 0),
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE TABLE inviters (
         guild_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
@@ -144,6 +153,19 @@ module.exports = {
       CREATE INDEX idx_invite_events_guild_inviter ON invite_events (guild_id, inviter_id);
       CREATE INDEX idx_invite_events_guild_user ON invite_events (guild_id, user_id);
       CREATE INDEX idx_bonus_adjustments_guild_user ON invite_bonus_adjustments (guild_id, user_id);
+      CREATE INDEX idx_honeypot_settings_channel ON honeypot_settings (guild_id, channel_id);
+
+      CREATE TABLE honeypot_kicks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        username TEXT,
+        occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX idx_honeypot_kicks_guild_channel_time
+        ON honeypot_kicks (guild_id, channel_id, occurred_at DESC);
     `);
   },
 };
