@@ -75,8 +75,12 @@ class DiscordInviteGateway {
     let members;
     try {
       members = await guild.members.fetch();
-    } catch {
-      members = guild.members.cache;
+    } catch (error) {
+      this.logger?.error('members', 'fetchGuildMembers', `Failed to fetch authoritative members for guild ${guildId}`, {
+        guildId,
+        error,
+      });
+      return null;
     }
     if (!members || members.size === 0) return [];
 
@@ -146,6 +150,21 @@ class DiscordInviteGateway {
       return null;
     }
     return null;
+  }
+
+  async resolveUsers(userIds, { concurrency = 6 } = {}) {
+    const ids = [...new Set((userIds || []).filter(Boolean).map(String))];
+    const result = new Map();
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < ids.length) {
+        const id = ids[cursor++];
+        result.set(id, await this.resolveUser(id));
+      }
+    };
+    const workers = Array.from({ length: Math.min(concurrency, ids.length) }, () => worker());
+    await Promise.all(workers);
+    return result;
   }
 }
 

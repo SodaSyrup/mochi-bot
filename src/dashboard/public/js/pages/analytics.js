@@ -44,17 +44,17 @@ class AnalyticsPage {
     this.fetchActivityLog();
   }
 
-  async syncHistoricalMembers() {
+  async reconcileMembers() {
     if (!this.currentGuildId) return;
 
-    const btn = document.getElementById('btn-sync-members');
+    const btn = document.getElementById('btn-reconcile-members');
     if (btn) {
       btn.disabled = true;
-      btn.textContent = 'Syncing…';
+      btn.textContent = 'Reconciling…';
     }
 
     try {
-      const data = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/sync-members`, { method: 'POST' });
+      const data = await apiFetch(`/api/guilds/${this.currentGuildId}/invites/reconcile-members`, { method: 'POST' });
 
       if (data.success) {
         window.Mochi?.showToast(data.message, 'success');
@@ -63,12 +63,12 @@ class AnalyticsPage {
         window.Mochi?.showToast(data.message, 'leave');
       }
     } catch (e) {
-      console.error('Error syncing historical members:', e);
-      window.Mochi?.showToast('Could not sync historical members.', 'leave');
+      console.error('Error reconciling members:', e);
+      window.Mochi?.showToast('Could not reconcile members.', 'leave');
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Sync historical members';
+        btn.innerHTML = '<i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Reconcile members';
       }
     }
   }
@@ -290,12 +290,12 @@ class AnalyticsPage {
     if (isLeft) {
       actionBadge = `<span class="badge badge-neutral">Left server</span>`;
       actionDetail = `Departed after joining ${item.joinedAt ? new Date(item.joinedAt).toLocaleDateString() : 'N/A'}.`;
-    } else if (isFake && item.isPreExisting) {
-      actionBadge = `<span class="badge badge-warning">Pre-bot join (suspicious)</span>`;
-      actionDetail = 'Account was young when it joined — recorded from the historical member list.';
-    } else if (item.isPreExisting) {
-      actionBadge = `<span class="badge badge-neutral">Joined prior to bot</span>`;
-      actionDetail = 'Historical member — invite attribution not available.';
+    } else if (isFake && item.isReconciled) {
+      actionBadge = `<span class="badge badge-warning">Reconciled join (suspicious)</span>`;
+      actionDetail = 'Account was young when it joined — invite attribution was not available.';
+    } else if (item.isReconciled) {
+      actionBadge = `<span class="badge badge-neutral">Reconciled join</span>`;
+      actionDetail = 'Member discovered during authoritative reconciliation — invite attribution not available.';
     } else if (isFake) {
       actionBadge = `<span class="badge badge-warning">Suspicious join</span>`;
       actionDetail = 'Account created within the threshold (possible alt or bot).';
@@ -307,14 +307,14 @@ class AnalyticsPage {
 
     // Status badge
     let statusBadge = '';
-    if (isFake && item.isPreExisting) {
+    if (isFake && item.isReconciled) {
       statusBadge = `<span class="badge badge-warning">Suspicious</span>`;
     } else if (isFake) {
       statusBadge = `<span class="badge badge-warning">Suspicious</span>`;
     } else if (isLeft) {
       statusBadge = `<span class="badge badge-neutral">Departed</span>`;
-    } else if (item.isPreExisting) {
-      statusBadge = `<span class="badge badge-neutral">Pre-existing</span>`;
+    } else if (item.isReconciled) {
+      statusBadge = `<span class="badge badge-neutral">Reconciled</span>`;
     } else {
       statusBadge = `<span class="badge badge-success">Active</span>`;
     }
@@ -323,7 +323,7 @@ class AnalyticsPage {
     const attributionType = item.attribution?.type || '';
     const inviterId = item.attribution?.inviterId || null;
     let inviterContent = '';
-    if (item.isPreExisting) {
+    if (item.isReconciled) {
       inviterContent = `<span class="text-muted text-small">Not available</span>`;
     } else if (attributionType === 'VANITY') {
       inviterContent = `<span class="text-secondary">Vanity URL</span>`;

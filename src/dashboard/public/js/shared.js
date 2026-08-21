@@ -84,8 +84,7 @@ class MochiSharedCore {
     this.extractGuildFromUrlOrStorage();
     this.setupSocket();
     this.setupGuildSelect();
-    await this.fetchUser();
-    await this.fetchStats();
+    await Promise.all([this.fetchUser(), this.fetchStats()]);
     await this.fetchGuilds();
   }
 
@@ -438,7 +437,7 @@ if (typeof window !== 'undefined') {
 }
 
 // CommonJS export for unit tests. The Mochi core and shell wiring only run in
-// a browser; the pure helpers are exported for Node tests.
+// a browser; the pure helpers are exported for Bun tests.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { resolveBotStatus, apiFetch, MochiSharedCore };
 }

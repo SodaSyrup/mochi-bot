@@ -21,13 +21,38 @@ module.exports = {
     };
 
     updatePresence();
-    setInterval(updatePresence, 60000);
+    client.mochiPresenceInterval = setInterval(updatePresence, 60000);
+    client.mochiPresenceInterval.unref?.();
 
     console.log(`[Bot] Initializing invite cache for ${client.guilds.cache.size} guilds...`);
-    for (const [, guild] of client.guilds.cache) {
-      await services.invites.initializeGuild(guild.id);
-    }
+    const guilds = [...client.guilds.cache.values()];
+    const runBounded = async (operation, concurrency) => {
+      const failures = [];
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < guilds.length) {
+          const guild = guilds[cursor++];
+          try {
+            await operation(guild.id);
+          } catch (error) {
+            failures.push({ guildId: guild.id, error });
+            services.logger?.error?.('bot', 'guildInitialization', `Failed to initialize guild ${guild.id}`, {
+              guildId: guild.id,
+              error,
+            });
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(concurrency, guilds.length) }, () => worker()));
+      return failures;
+    };
 
+    const primeFailures = await runBounded((guildId) => services.invites.primeGuildInvites(guildId), 4);
+    const reconcileFailures = await runBounded((guildId) => services.invites.reconcileGuildMembers(guildId), 2);
+    const failures = [...primeFailures, ...reconcileFailures];
+    if (failures.length > 0) {
+      console.warn(`[Bot] Invite initialization completed with ${failures.length} guild failure(s).`);
+    }
     console.log('[Bot] Mochi is fully initialized and ready!');
   }
 };

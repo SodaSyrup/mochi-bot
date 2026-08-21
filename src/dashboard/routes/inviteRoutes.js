@@ -56,19 +56,23 @@ function createInviteRoutes({ inviteService }) {
     res.json({ analytics: series });
   });
 
-  router.post('/sync-members', async (req, res) => {
-    const result = await inviteService.syncPreExistingMembers(req.params.guildId);
+  router.post('/reconcile-members', async (req, res) => {
+    const result = await inviteService.reconcileGuildMembers(req.params.guildId);
     if (!result.available) {
       return res.json({
         success: false,
-        message: 'Guild not connected to bot — sync requires the bot to be in the server.',
-        synced: 0,
+        message: 'Guild member reconciliation was unavailable because the bot could not fetch the authoritative member list.',
+        joined: 0,
+        left: 0,
+        unchanged: 0,
       });
     }
     res.json({
       success: true,
-      message: `Successfully synced ${result.synced} historical member${result.synced !== 1 ? 's' : ''} into the audit log.`,
-      synced: result.synced,
+      message: `Reconciled ${result.joined} member join${result.joined !== 1 ? 's' : ''} and ${result.left} leave${result.left !== 1 ? 's' : ''}.`,
+      joined: result.joined,
+      left: result.left,
+      unchanged: result.unchanged,
     });
   });
 

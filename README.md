@@ -1,6 +1,6 @@
 # mochi
 
-A lightweight Discord invite tracking bot with a live web dashboard, built with Bun or Node and SQLite.
+A lightweight Discord invite tracking bot with a live web dashboard, built for Bun and SQLite.
 
 ## Features
 
@@ -10,7 +10,7 @@ A lightweight Discord invite tracking bot with a live web dashboard, built with 
 - **Safety & AutoMod**: view and configure Discord AutoMod rules directly from the dashboard (keyword filters, mention spam, spam presets, member profiles, server verification levels).
 - **Web dashboard**: live event feed over authorized Socket.IO rooms, 7-day join/leave charts, invite code manager, server safety controls, and a built-in simulator for sandbox testing.
 - **Secure by default**: Discord OAuth with state validation, per-guild authorization, authenticated Socket.IO, and no global guild broadcasts.
-- **Fast & light**: uses `bun:sqlite` (with `better-sqlite3` fallback for Node.js) with WAL mode for fast local storage.
+- **Fast & light**: uses Bun's native `bun:sqlite` driver with WAL mode for fast local storage.
 
 ## Application Modes
 
@@ -22,15 +22,13 @@ The application runs in exactly one explicit mode, selected by `APP_MODE`:
 | `demo` | Sandbox mode: explicit demo gateways/fixtures and an isolated demo database. |
 | `production` | Requires `DISCORD_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET`, a unique `SESSION_SECRET` and valid dashboard URLs; fails startup otherwise. |
 
-`DEMO_MODE=true` is still recognized as a legacy alias and normalized to `APP_MODE=demo`, but `APP_MODE` is the preferred configuration.
-
 Demo mode uses `data/mochi-demo.sqlite` so demo data never pollutes the live `data/mochi.sqlite`.
 
 ## Setup
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) (v1.0+) or [Node.js](https://nodejs.org) (v18+)
+- [Bun](https://bun.sh) (v1.3+)
 - A Discord Bot Application from the [Discord Developer Portal](https://discord.com/developers/applications)
 
 ### Installation
@@ -104,8 +102,7 @@ Membership attribution is stored separately from Discord user IDs (never masquer
 - `INVITE` — credited to a specific Discord inviter via an invite code.
 - `VANITY` — joined via the guild vanity URL.
 - `UNKNOWN` — attribution was ambiguous or unavailable (never guessed).
-- `PRE_EXISTING` — backfilled from historical member sync; never earns credit.
-- `OAUTH` — reserved for Discord OAuth-style flows.
+- `RECONCILED` — discovered during an authoritative member reconciliation; never earns invite credit.
 
 `inviter_id` means exactly one thing: a Discord user ID, or `null`.
 
@@ -165,27 +162,26 @@ Socket.IO forwards canonical application events to authorized guild rooms throug
 Rebuild projections after any manual database fiddling:
 
 ```bash
-node scripts/rebuild-invite-projections.js                       # all guilds
-node scripts/rebuild-invite-projections.js --guild <guildId>     # one guild
-node scripts/rebuild-invite-projections.js --guild <guildId> --dry-run   # preview only, no writes
+bun run rebuild-projections                                      # all guilds
+bun run rebuild-projections -- --guild <guildId>                 # one guild
+bun run rebuild-projections -- --guild <guildId> --dry-run        # preview only, no writes
 ```
 
 ### Migrations & the fresh database baseline
 
-Mochi uses versioned SQLite migrations. Because the project is currently pre-release, the schema history was consolidated into a single clean initial migration instead of a chain of same-day prototype compatibility migrations.
+Mochi uses versioned SQLite migrations. The new bot starts with one complete baseline migration; future production schema changes can be added as append-only migrations.
 
-- `001` — the initial baseline: the complete current schema (durable invite ledger, bonus adjustments, projections, statistics view, invite cache/labels, guild settings). It runs once on any empty database.
-- `002` — invite log channel + durable bot attribution: adds `guilds.invite_log_channel_id` and the `bot_attributions` table.
-- `003+` — future schema changes. Migrations are append-only: fresh databases start at `001` and every subsequent real change is simply the next numbered migration.
+- `001` — the complete current schema: durable invite ledger, projections, invite logs, invite cache/labels, guild settings, and bot attribution.
+- `002+` — future production schema changes. Migrations are append-only after the initial baseline.
 
-Existing development databases are disposable during this pre-release stage. After changing the baseline, reset them explicitly (this is a manual developer action, never something the application does at startup):
+Development databases are disposable while the bot is being built. Reset them explicitly when changing the baseline (this is a manual developer action, never something the application does at startup):
 
 ```bash
 rm data/mochi.sqlite
 rm data/mochi-demo.sqlite
 ```
 
-Then start Mochi normally and migration `001` creates a clean database.
+Then start Mochi normally and migration `001` creates the complete clean database.
 
 > **Migration freeze rule:** once Mochi is deployed with a database that must be preserved, never edit, squash, or remove an already-released migration. Need a schema change? Add the next numbered migration (`002`, `003`, …) and leave previously shipped migrations untouched.
 
@@ -215,11 +211,10 @@ Then start Mochi normally and migration `001` creates a clean database.
 
 ## Testing
 
-Run the full suite (Bun or Node):
+Run the full suite:
 
 ```bash
-bun run tests/runAll.js
-npm run test:node
+bun test
 ```
 
-`bun test` also runs every suite. Tests use isolated in-memory databases and never touch `data/mochi.sqlite`.
+Tests use isolated in-memory databases and never touch `data/mochi.sqlite`.

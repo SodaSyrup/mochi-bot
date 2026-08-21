@@ -5,6 +5,7 @@ const { InviteService } = require('../src/features/invites/application/inviteSer
 const { createInvitePolicy } = require('../src/features/invites/domain/invitePolicy');
 const { AttributionType } = require('../src/features/invites/domain/attribution');
 const { InviteEvents } = require('../src/app/eventBus');
+const { DiscordInviteGateway } = require('../src/platform/discord/discordInviteGateway');
 
 const silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
 
@@ -77,6 +78,41 @@ async function runInviteServiceTests() {
     assert.strictEqual(repos.invites.countInviteEvents('g'), 2);
   });
 
+  suite.test('startup reconciliation runs every time against the authoritative member list', async () => {
+    const gateway = createFakeInviteGateway();
+    let memberFetches = 0;
+    gateway.fetchGuildMembers = async () => {
+      memberFetches += 1;
+      return [];
+    };
+    const { service, repos } = buildService({ gateway });
+
+    await service.initializeGuild('g');
+    await service.initializeGuild('g');
+
+    assert.strictEqual(memberFetches, 2);
+  });
+
+  suite.test('user-enriched leaderboard uses one batch resolution', async () => {
+    const gateway = createFakeInviteGateway();
+    let batchCalls = 0;
+    gateway.resolveUsers = async (ids) => {
+      batchCalls += 1;
+      return new Map(ids.map((id) => [id, { id, username: `Name_${id}`, avatar: null }]));
+    };
+    const { service, repos } = buildService({ gateway });
+    repos.invites.trackJoin({
+      guildId: 'g',
+      userId: 'member-1',
+      attribution: { type: AttributionType.INVITE, inviterId: 'inv-1', inviteCode: 'c' },
+      isFake: false,
+    });
+
+    const result = await service.getLeaderboardWithUsers('g');
+    assert.strictEqual(batchCalls, 1);
+    assert.strictEqual(result.leaderboard[0].username, 'Name_inv-1');
+  });
+
   suite.test('ambiguous multi-invite delta resolves to UNKNOWN, never a guess', async () => {
     const gateway = createFakeInviteGateway({
       invites: [{ code: 'a', uses: 5, inviterId: 'u1' }, { code: 'b', uses: 3, inviterId: 'u2' }],
@@ -119,31 +155,60 @@ async function runInviteServiceTests() {
     assert.strictEqual(rb.result.applied, true);
   });
 
-  suite.test('historical sync excludes bots via the shared policy', async () => {
+  suite.test('reconciliation excludes bots via the shared policy', async () => {
     const gateway = createFakeInviteGateway();
     gateway.fetchGuildMembers = async () => [
       { id: 'h1', guildId: 'g', bot: false, joinedAt: '2026-01-01T00:00:00Z', accountCreatedAt: '2025-01-01T00:00:00Z' },
       { id: 'bot1', guildId: 'g', bot: true, joinedAt: '2026-01-01T00:00:00Z', accountCreatedAt: '2026-01-01T00:00:00Z' },
     ];
     const { service, repos } = buildService({ gateway });
-    const result = await service.syncPreExistingMembers('g');
-    assert.strictEqual(result.synced, 1); // bot excluded
+    const result = await service.reconcileGuildMembers('g');
+    assert.strictEqual(result.joined, 1); // bot excluded
     const member = repos.invites.getCurrentMember('g', 'bot1');
     assert.ok(!member, 'bot member should not be tracked');
     const human = repos.invites.getCurrentMember('g', 'h1');
-    assert.strictEqual(human.attribution_type, AttributionType.PRE_EXISTING);
+    assert.strictEqual(human.attribution_type, AttributionType.RECONCILED);
     assert.strictEqual(human.inviter_id, null);
   });
 
-  suite.test('sync is idempotent across calls', async () => {
+  suite.test('reconciliation is idempotent across calls', async () => {
     const gateway = createFakeInviteGateway();
     gateway.fetchGuildMembers = async () => [
       { id: 'h1', guildId: 'g', bot: false, joinedAt: '2026-01-01T00:00:00Z', accountCreatedAt: '2025-01-01T00:00:00Z' },
     ];
     const { service, repos } = buildService({ gateway });
-    await service.syncPreExistingMembers('g');
-    await service.syncPreExistingMembers('g');
+    await service.reconcileGuildMembers('g');
+    await service.reconcileGuildMembers('g');
     assert.strictEqual(repos.invites.countInviteEvents('g'), 1);
+  });
+
+  suite.test('failed authoritative member fetch does not mutate the ledger', async () => {
+    const gateway = createFakeInviteGateway();
+    gateway.fetchGuildMembers = async () => null;
+    const { service, repos } = buildService({ gateway });
+
+    const result = await service.reconcileGuildMembers('g');
+    assert.deepStrictEqual(result, { available: false, joined: 0, left: 0, unchanged: 0 });
+    assert.strictEqual(repos.invites.countInviteEvents('g'), 0);
+  });
+
+  suite.test('Discord member reconciliation never falls back to a partial cache', async () => {
+    const cachedMember = { id: 'cached', user: { username: 'Cached' } };
+    const gateway = new DiscordInviteGateway({
+      client: {
+        guilds: {
+          cache: new Map([['g', {
+            members: {
+              fetch: async () => { throw new Error('gateway unavailable'); },
+              cache: new Map([['cached', cachedMember]]),
+            },
+          }]]),
+        },
+      },
+      logger: { error: () => {} },
+    });
+
+    assert.strictEqual(await gateway.fetchGuildMembers('g'), null);
   });
 
   suite.test('leave through the service emits memberLeft and updates inviter stats', async () => {

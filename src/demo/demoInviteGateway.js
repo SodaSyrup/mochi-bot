@@ -69,6 +69,13 @@ class DemoInviteGateway {
     return DEMO_USERS[userId] || null;
   }
 
+  async resolveUsers(userIds) {
+    return new Map(
+      [...new Set((userIds || []).filter(Boolean).map(String))]
+        .map((id) => [id, DEMO_USERS[id] || null])
+    );
+  }
+
   demoMembers() {
     return DEMO_MEMBERS;
   }

@@ -5,7 +5,6 @@ const { AttributionType } = require('../src/features/invites/domain/attribution'
 const INVITE = (inviterId, code = 'code1') => ({ type: AttributionType.INVITE, inviterId, inviteCode: code });
 const VANITY = { type: AttributionType.VANITY, inviterId: null, inviteCode: null };
 const UNKNOWN = { type: AttributionType.UNKNOWN, inviterId: null, inviteCode: null };
-const PRE_EXISTING = { type: AttributionType.PRE_EXISTING, inviterId: null, inviteCode: null };
 
 async function runInviteRepositoryTests() {
   const suite = new TestSuite('Invite Repository');
@@ -125,23 +124,35 @@ async function runInviteRepositoryTests() {
     assert.strictEqual(invites.getInvitersCount('g'), 0);
   });
 
-  suite.test('pre-existing sync creates history without inviter credit and is idempotent', () => {
+  suite.test('member reconciliation is atomic, idempotent, and does not credit inviters', () => {
     const db = createTestDb();
     const { invites } = createRepos(db);
-    const count1 = invites.syncPreExistingMembers('g', [
+    const result1 = invites.reconcileMembers('g', [
       { userId: 'p1', joinedAt: '2026-01-01T00:00:00Z', isFake: false },
       { userId: 'p2', joinedAt: '2026-01-02T00:00:00Z', isFake: true },
     ]);
-    assert.strictEqual(count1, 2);
+    assert.deepStrictEqual(result1, { joined: 2, left: 0, unchanged: 0 });
     assert.strictEqual(invites.getInvitersCount('g'), 0);
+    assert.strictEqual(invites.getCurrentMember('g', 'p1').attribution_type, AttributionType.RECONCILED);
 
-    const count2 = invites.syncPreExistingMembers('g', [
+    const result2 = invites.reconcileMembers('g', [
       { userId: 'p1', joinedAt: '2026-01-01T00:00:00Z', isFake: false },
       { userId: 'p2', joinedAt: '2026-01-02T00:00:00Z', isFake: true },
       { userId: 'p3', joinedAt: '2026-01-03T00:00:00Z', isFake: false },
     ]);
-    assert.strictEqual(count2, 1); // only p3 is new
+    assert.deepStrictEqual(result2, { joined: 1, left: 0, unchanged: 2 });
     assert.strictEqual(invites.countInviteEvents('g'), 3);
+  });
+
+  suite.test('reconciliation records offline leaves and preserves earned inviter leave credit', () => {
+    const db = createTestDb();
+    const { invites } = createRepos(db);
+    invites.trackJoin({ guildId: 'g', userId: 'member', attribution: INVITE('inv'), isFake: false });
+
+    const result = invites.reconcileMembers('g', [], '2026-02-01T00:00:00Z');
+    assert.deepStrictEqual(result, { joined: 0, left: 1, unchanged: 0 });
+    assert.strictEqual(invites.getInviter('g', 'inv').leaves, 1);
+    assert.strictEqual(invites.getCurrentMember('g', 'member').is_left, 1);
   });
 
   suite.test('self-invite does not receive credit', () => {

@@ -12,17 +12,6 @@ async function runConfigTests() {
     assert.strictEqual(cfg.app.isProduction, false);
   });
 
-  suite.test('DEMO_MODE=true normalizes to demo', () => {
-    const cfg = buildConfig({ APP_MODE: '', DEMO_MODE: 'true' });
-    assert.strictEqual(cfg.app.mode, 'demo');
-    assert.strictEqual(cfg.app.isDemo, true);
-  });
-
-  suite.test('explicit APP_MODE wins over DEMO_MODE', () => {
-    const cfg = buildConfig({ APP_MODE: 'development', DEMO_MODE: 'true' });
-    assert.strictEqual(cfg.app.mode, 'development');
-  });
-
   suite.test('invalid mode throws', () => {
     assert.throws(() => buildConfig({ APP_MODE: 'banana' }), /Invalid APP_MODE/);
   });
@@ -64,6 +53,25 @@ async function runConfigTests() {
   suite.test('demo database path is isolated from the live path', () => {
     const cfg = buildConfig({ APP_MODE: 'demo' });
     assert.ok(cfg.database.demoPath.endsWith('mochi-demo.sqlite'));
+  });
+
+  suite.test('fake account threshold is validated and configurable', () => {
+    assert.strictEqual(
+      buildConfig({ APP_MODE: 'development', FAKE_ACCOUNT_THRESHOLD_DAYS: '14' }).inviteTracker.fakeAccountThresholdDays,
+      14
+    );
+    assert.strictEqual(
+      buildConfig({ APP_MODE: 'development', FAKE_ACCOUNT_THRESHOLD_DAYS: '0' }).inviteTracker.fakeAccountThresholdDays,
+      0
+    );
+    assert.throws(
+      () => buildConfig({ APP_MODE: 'development', FAKE_ACCOUNT_THRESHOLD_DAYS: 'not-a-number' }),
+      /FAKE_ACCOUNT_THRESHOLD_DAYS must be an integer/
+    );
+    assert.throws(
+      () => buildConfig({ APP_MODE: 'development', FAKE_ACCOUNT_THRESHOLD_DAYS: '366' }),
+      /FAKE_ACCOUNT_THRESHOLD_DAYS must be an integer/
+    );
   });
 
   suite.test('DEV_AUTH_BYPASS defaults to false and is explicit', () => {

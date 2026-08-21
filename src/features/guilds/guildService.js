@@ -52,8 +52,16 @@ class GuildService {
       }
     }
 
+    let normalizedThreshold;
+    if (fake_threshold_days !== undefined) {
+      normalizedThreshold = Number(fake_threshold_days);
+      if (!Number.isInteger(normalizedThreshold) || normalizedThreshold < 0 || normalizedThreshold > 365) {
+        throw new ValidationError('fake_threshold_days must be an integer between 0 and 365.');
+      }
+    }
+
     const updated = this.guilds.updateGuild(guildId, {
-      fake_threshold_days: fake_threshold_days !== undefined ? parseInt(fake_threshold_days, 10) : undefined,
+      fake_threshold_days: normalizedThreshold,
       invite_log_channel_id: normalizedChannelId,
     });
     return updated;

@@ -1,14 +1,15 @@
 class GuildRepository {
-  constructor(db) {
+  constructor(db, { defaultFakeThresholdDays = 7 } = {}) {
     this.db = db;
+    this.defaultFakeThresholdDays = defaultFakeThresholdDays;
   }
 
   getGuild(guildId, defaultName = 'Unknown Server', defaultIcon = null) {
     let row = this.db.prepare('SELECT * FROM guilds WHERE guild_id = ?').get(guildId);
     if (!row) {
       this.db
-        .prepare('INSERT INTO guilds (guild_id, name, icon) VALUES (?, ?, ?)')
-        .run(guildId, defaultName, defaultIcon);
+        .prepare('INSERT INTO guilds (guild_id, name, icon, fake_threshold_days) VALUES (?, ?, ?, ?)')
+        .run(guildId, defaultName, defaultIcon, this.defaultFakeThresholdDays);
       row = this.db.prepare('SELECT * FROM guilds WHERE guild_id = ?').get(guildId);
     }
     return row;

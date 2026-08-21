@@ -3,8 +3,8 @@ const { AttributionType } = require('./attribution');
 const DEFAULT_FAKE_THRESHOLD_DAYS = 7;
 
 /**
- * Centralized invite policy. Live guildMemberAdd handling, historical
- * synchronization and the simulator all call these same rules so bot-member
+ * Centralized invite policy. Live guildMemberAdd handling, member
+ * reconciliation and the simulator all call these same rules so bot-member
  * handling and fake classification never diverge between paths.
  *
  * @param {{ now?: () => number }} options - injectable clock for deterministic tests.

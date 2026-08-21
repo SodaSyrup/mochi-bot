@@ -48,7 +48,7 @@ function seedDemoData({ inviteRepository, guildRepository, logger }) {
     }
   }
 
-  // History variety: vanity / unknown / pre-existing members.
+  // History variety: vanity / unknown / reconciled members.
   inviteRepository.trackJoin({
     guildId,
     userId: 'mem_vanity_1',
@@ -63,7 +63,7 @@ function seedDemoData({ inviteRepository, guildRepository, logger }) {
     isFake: false,
     joinedAt: new Date(now - 3 * DAY).toISOString(),
   });
-  inviteRepository.syncPreExistingMembers(guildId, [
+  inviteRepository.reconcileMembers(guildId, [
     { userId: 'mem_pre_1', joinedAt: new Date(now - 20 * DAY).toISOString(), isFake: false },
     { userId: 'mem_pre_2', joinedAt: new Date(now - 15 * DAY).toISOString(), isFake: true },
   ]);

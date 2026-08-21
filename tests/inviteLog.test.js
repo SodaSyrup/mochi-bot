@@ -217,12 +217,12 @@ async function runInviteLogTests() {
     assert.strictEqual(gw.sent[0].content, '**Alice** left. They originally joined via the server vanity URL.');
   });
 
-  suite.test('PRE_EXISTING joins produce no log (no historical spam)', async () => {
+  suite.test('RECONCILED joins produce no log (no startup spam)', async () => {
     const { service, guilds, gw } = buildInviteLog();
     configureGuild(guilds, 'g', 'chanA');
 
     await service.handleMemberJoined(joinEvent('g', {
-      attribution: { type: AttributionType.PRE_EXISTING, inviterId: null, inviteCode: null },
+      attribution: { type: AttributionType.RECONCILED, inviterId: null, inviteCode: null },
     }));
 
     assert.strictEqual(gw.sent.length, 0);

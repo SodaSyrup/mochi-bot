@@ -233,7 +233,9 @@ class InviteRepository {
         occurredAt: leftAt,
       });
       this.#markMemberLeft({ guildId, userId, leftAt });
-      this.#recordDailyStat(guildId, leftAt, 'leaves');
+      if (attribution.type !== AttributionType.RECONCILED) {
+        this.#recordDailyStat(guildId, leftAt, 'leaves');
+      }
       this.#applyLeaveToInviter(guildId, userId, attribution, isFake);
 
       return { applied: true, reason: 'LEFT', cycle: member.membership_cycle };
@@ -241,24 +243,95 @@ class InviteRepository {
     return tx();
   }
 
+  getMembers(guildId) {
+    return this.db.prepare(`
+      SELECT guild_id, user_id, inviter_id, invite_code, joined_at, is_fake,
+             is_left, left_at, membership_cycle, attribution_type
+      FROM invite_members
+      WHERE guild_id = ?
+    `).all(guildId);
+  }
+
   /**
-   * Backfill pre-existing members. Idempotent — a second run inserts nothing
-   * new. Pre-existing members never earn inviter credit.
+   * Reconcile the durable membership projection against an authoritative
+   * Discord member snapshot. The whole diff is atomic and emits no live events.
    */
-  syncPreExistingMembers(guildId, membersList) {
-    let inserted = 0;
+  reconcileMembers(guildId, membersList, reconciledAt = new Date().toISOString()) {
+    const membersById = new Map((membersList || []).map((member) => [String(member.userId), member]));
+    let joined = 0;
+    let left = 0;
+    let unchanged = 0;
     const tx = this.db.transaction(() => {
-      for (const m of membersList || []) {
-        if (this.#getMember(guildId, m.userId)) continue;
-        const attribution = { type: AttributionType.PRE_EXISTING, inviterId: null, inviteCode: null };
-        const joinedAt = m.joinedAt || new Date().toISOString();
-        this.#insertEvent({ guildId, userId: m.userId, cycle: 1, eventType: 'JOIN', attribution, isFake: m.isFake, occurredAt: joinedAt });
-        this.#upsertMember({ guildId, userId: m.userId, cycle: 1, attribution, isFake: m.isFake, joinedAt });
-        inserted += 1;
+      const existingRows = this.getMembers(guildId);
+      const existingById = new Map(existingRows.map((row) => [String(row.user_id), row]));
+      const reconciledAttribution = { type: AttributionType.RECONCILED, inviterId: null, inviteCode: null };
+
+      for (const [userId, member] of membersById) {
+        const existing = existingById.get(userId);
+        if (existing && existing.is_left === 0) {
+          unchanged += 1;
+          continue;
+        }
+
+        const cycle = existing ? existing.membership_cycle + 1 : 1;
+        const joinedAt = member.joinedAt || reconciledAt;
+        this.#insertEvent({
+          guildId,
+          userId,
+          cycle,
+          eventType: 'JOIN',
+          attribution: reconciledAttribution,
+          isFake: member.isFake,
+          occurredAt: joinedAt,
+        });
+        if (existing) {
+          this.#updateMemberPresent({
+            guildId,
+            userId,
+            cycle,
+            attribution: reconciledAttribution,
+            isFake: member.isFake,
+            joinedAt,
+          });
+        } else {
+          this.#upsertMember({
+            guildId,
+            userId,
+            cycle,
+            attribution: reconciledAttribution,
+            isFake: member.isFake,
+            joinedAt,
+          });
+        }
+        joined += 1;
+      }
+
+      for (const existing of existingRows) {
+        if (existing.is_left !== 0 || membersById.has(String(existing.user_id))) continue;
+        const attribution = {
+          type: existing.attribution_type || AttributionType.UNKNOWN,
+          inviterId: existing.inviter_id ?? null,
+          inviteCode: existing.invite_code ?? null,
+        };
+        this.#insertEvent({
+          guildId,
+          userId: existing.user_id,
+          cycle: existing.membership_cycle,
+          eventType: 'LEAVE',
+          attribution,
+          isFake: Boolean(existing.is_fake),
+          occurredAt: reconciledAt,
+        });
+        this.#markMemberLeft({ guildId, userId: existing.user_id, leftAt: reconciledAt });
+        if (attribution.type !== AttributionType.RECONCILED) {
+          this.#recordDailyStat(guildId, reconciledAt, 'leaves');
+        }
+        this.#applyLeaveToInviter(guildId, existing.user_id, attribution, Boolean(existing.is_fake));
+        left += 1;
       }
     });
     tx();
-    return inserted;
+    return { joined, left, unchanged };
   }
 
   // --------------------------------------------------------------- bonuses
@@ -480,7 +553,7 @@ class InviteRepository {
         },
         isFake: Boolean(r.is_fake),
         isLeft: r.event_type === 'LEAVE',
-        isPreExisting: r.attribution_type === AttributionType.PRE_EXISTING,
+        isReconciled: r.attribution_type === AttributionType.RECONCILED,
         joinedAt: r.joined_at,
         leftAt: r.event_type === 'LEAVE' ? r.occurred_at : null,
         inviteLabel: r.invite_label,

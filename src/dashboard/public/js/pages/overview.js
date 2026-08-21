@@ -47,8 +47,7 @@ class OverviewPage {
 
   async fetchGuildDetails() {
     try {
-      const res = await fetch(`/api/guilds/${this.currentGuildId}`);
-      const data = await res.json();
+      const data = await apiFetch(`/api/guilds/${this.currentGuildId}`);
       const totalInvitersEl = document.getElementById('stat-total-inviters');
       const totalMembersEl = document.getElementById('stat-total-members');
       if (totalInvitersEl) totalInvitersEl.textContent = (data.guild.totalInviters || 0).toLocaleString();
@@ -78,7 +77,7 @@ class OverviewPage {
                 <img src="${escapeHtml(r.avatar)}" class="user-cell-avatar" alt="" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
                 <div>
                   <div class="user-cell-name">${escapeHtml(r.username)}</div>
-                  <div class="user-cell-id">${escapeHtml(r.user_id)}</div>
+                <div class="user-cell-id">${escapeHtml(r.userId)}</div>
                 </div>
               </div>
             </td>
@@ -107,14 +106,14 @@ class OverviewPage {
       } else {
         histData.history.forEach(j => {
           const tr = document.createElement('tr');
-          const isFake = Boolean(j.is_fake);
-          const isLeft = Boolean(j.is_left);
+          const isFake = Boolean(j.isFake);
+          const isLeft = Boolean(j.isLeft);
 
           let statusBadge = `<span class="badge badge-success">Active</span>`;
           if (isLeft) statusBadge = `<span class="badge badge-neutral">Left</span>`;
           else if (isFake) statusBadge = `<span class="badge badge-warning">Suspicious</span>`;
 
-          const labelTag = j.invite_label ? ` <span class="badge badge-neutral">${escapeHtml(j.invite_label)}</span>` : '';
+          const labelTag = j.inviteLabel ? ` <span class="badge badge-neutral">${escapeHtml(j.inviteLabel)}</span>` : '';
 
           tr.innerHTML = `
             <td>
@@ -126,7 +125,7 @@ class OverviewPage {
               </div>
             </td>
             <td><b>${escapeHtml(j.inviterName)}</b></td>
-            <td><code>${escapeHtml(j.invite_code || 'N/A')}</code>${labelTag}</td>
+            <td><code>${escapeHtml(j.inviteCode || 'N/A')}</code>${labelTag}</td>
             <td>${statusBadge}</td>
           `;
           histTbody.appendChild(tr);

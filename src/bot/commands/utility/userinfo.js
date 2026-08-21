@@ -23,8 +23,8 @@ module.exports = {
         inviterText = 'Vanity URL';
       } else if (memberRecord.attribution_type === 'UNKNOWN') {
         inviterText = 'Direct / Unknown';
-      } else if (memberRecord.attribution_type === 'PRE_EXISTING') {
-        inviterText = 'Pre-Bot (Unknown)';
+      } else if (memberRecord.attribution_type === 'RECONCILED') {
+        inviterText = 'Reconciled (Unknown)';
       }
     }
 

@@ -50,6 +50,22 @@ class InviteService {
     return this.memberInfo.get(guildId)?.get(userId) || null;
   }
 
+  #forgetMemberInfo(guildId, userId) {
+    const guildMembers = this.memberInfo.get(guildId);
+    guildMembers?.delete(userId);
+    if (guildMembers?.size === 0) this.memberInfo.delete(guildId);
+  }
+
+  async #resolveUsers(userIds) {
+    const ids = [...new Set((userIds || []).filter(Boolean).map(String))];
+    if (ids.length === 0) return new Map();
+    if (typeof this.gateway.resolveUsers === 'function') {
+      return this.gateway.resolveUsers(ids);
+    }
+    const resolved = await Promise.all(ids.map(async (id) => [id, await this.gateway.resolveUser(id)]));
+    return new Map(resolved);
+  }
+
   #attributionToInviterPayload(attribution) {
     if (!attribution || attribution.type !== AttributionType.INVITE || !attribution.inviterId) {
       return null;
@@ -59,18 +75,19 @@ class InviteService {
 
   // ------------------------------------------------------------ lifecycle
 
-  /**
-   * Prime the invite cache for a guild and sync pre-existing members.
-   * Called once per guild after the bot connects.
-   */
+  /** Prime invite state and reconcile members after the bot connects. */
   async initializeGuild(guildId) {
-    await this.queue.run(guildId, async () => {
+    await this.primeGuildInvites(guildId);
+    return this.reconcileGuildMembers(guildId);
+  }
+
+  async primeGuildInvites(guildId) {
+    return this.queue.run(guildId, async () => {
       const snapshot = await this.gateway.fetchGuildInvites(guildId);
       if (snapshot) {
         this.#storeSnapshot(guildId, snapshot);
       }
     });
-    await this.syncPreExistingMembers(guildId);
   }
 
   #storeSnapshot(guildId, snapshot) {
@@ -81,15 +98,14 @@ class InviteService {
     this.invites.saveCachedInvites(guildId, Array.from(map.values()));
   }
 
-  /**
-   * Historical sync of pre-existing members. Reuses the same policy as live
-   * joins. Backfilled members are attributed PRE_EXISTING and never earn
-   * inviter credit. Idempotent: running twice adds no new lifecycle records.
-   */
-  async syncPreExistingMembers(guildId) {
+  async reconcileGuildMembers(guildId) {
+    return this.queue.run(guildId, () => this.#reconcileGuildMembers(guildId));
+  }
+
+  async #reconcileGuildMembers(guildId) {
     const members = await this.gateway.fetchGuildMembers(guildId);
     if (!members) {
-      return { available: false, synced: 0 };
+      return { available: false, joined: 0, left: 0, unchanged: 0 };
     }
 
     const settings = this.guilds.getGuild(guildId);
@@ -102,11 +118,10 @@ class InviteService {
         fakeThresholdDays: settings.fake_threshold_days,
       });
       list.push({ userId: member.id, joinedAt: member.joinedAt, isFake });
-      this.#cacheMemberInfo(guildId, member);
     }
 
-    const synced = this.invites.syncPreExistingMembers(guildId, list);
-    return { available: true, synced };
+    const result = this.invites.reconcileMembers(guildId, list);
+    return { available: true, ...result };
   }
 
   /**
@@ -252,6 +267,7 @@ class InviteService {
           isFake: Boolean(member.is_fake),
           occurredAt: new Date().toISOString(),
         });
+        this.#forgetMemberInfo(memberData.guildId, memberData.id);
       }
 
       return { result };
@@ -393,10 +409,11 @@ class InviteService {
       rows = this.invites.getCachedInvites(guildId);
     }
 
+    const users = await this.#resolveUsers(rows.map((inv) => inv.inviterId));
     const result = [];
     for (const inv of rows) {
       const labelData = labelByCode.get(inv.code);
-      const inviter = inv.inviterId ? await this.gateway.resolveUser(inv.inviterId) : null;
+      const inviter = inv.inviterId ? users.get(String(inv.inviterId)) : null;
       result.push({
         code: inv.code,
         url: `https://discord.gg/${inv.code}`,
@@ -432,9 +449,10 @@ class InviteService {
   async getLeaderboardWithUsers(guildId, { limit = 10, offset = 0 } = {}) {
     const total = this.invites.getInvitersCount(guildId);
     const rows = this.invites.getLeaderboard(guildId, { limit, offset });
+    const users = await this.#resolveUsers(rows.map((row) => row.userId));
     const leaderboard = [];
     for (const row of rows) {
-      const user = await this.gateway.resolveUser(row.userId);
+      const user = users.get(String(row.userId));
       leaderboard.push({
         ...row,
         username: user?.username || `User_${row.userId.slice(-4)}`,
@@ -450,23 +468,24 @@ class InviteService {
 
   async getRecentJoinsWithUsers(guildId, limit = 10) {
     const rows = this.invites.getRecentJoins(guildId, limit);
+    const users = await this.#resolveUsers(rows.flatMap((j) => [j.userId, j.attribution.inviterId]));
     const result = [];
     for (const j of rows) {
-      const user = await this.gateway.resolveUser(j.userId);
-      const inviter = j.attribution.inviterId ? await this.gateway.resolveUser(j.attribution.inviterId) : null;
+      const user = users.get(String(j.userId));
+      const inviter = j.attribution.inviterId ? users.get(String(j.attribution.inviterId)) : null;
       result.push({
-        user_id: j.userId,
+        userId: j.userId,
         username: user?.username || `User_${j.userId.slice(-4)}`,
         avatar: user?.avatar || `https://cdn.discordapp.com/embed/avatars/${this.#avatarIndex(j.userId)}.png`,
-        inviter_id: j.attribution.inviterId,
+        inviterId: j.attribution.inviterId,
         inviterName: this.#inviterLabel(j.attribution, inviter),
-        invite_code: j.attribution.inviteCode || null,
-        invite_label: j.inviteLabel || null,
-        channel_name: j.channelName || null,
-        joined_at: j.joinedAt,
-        left_at: j.leftAt,
-        is_fake: j.isFake,
-        is_left: j.isLeft,
+        inviteCode: j.attribution.inviteCode || null,
+        inviteLabel: j.inviteLabel || null,
+        channelName: j.channelName || null,
+        joinedAt: j.joinedAt,
+        leftAt: j.leftAt,
+        isFake: j.isFake,
+        isLeft: j.isLeft,
       });
     }
     return result;
@@ -474,15 +493,18 @@ class InviteService {
 
   async getActivityLogWithUsers(guildId, options) {
     const data = this.invites.getActivityLog(guildId, options);
+    const users = await this.#resolveUsers(
+      data.items.flatMap((item) => [item.userId, item.attribution.inviterId])
+    );
     const items = [];
     for (const item of data.items) {
-      const user = await this.gateway.resolveUser(item.userId);
-      const inviter = item.attribution.inviterId ? await this.gateway.resolveUser(item.attribution.inviterId) : null;
-      const isPreExisting = item.isPreExisting;
+      const user = users.get(String(item.userId));
+      const inviter = item.attribution.inviterId ? users.get(String(item.attribution.inviterId)) : null;
+      const isReconciled = item.isReconciled;
 
       let eventType = item.eventType;
       if (item.eventType === 'JOIN' && item.isFake) eventType = 'FAKE_JOIN';
-      if (isPreExisting && item.eventType === 'JOIN') eventType = 'PRE_BOT';
+      if (isReconciled && item.eventType === 'JOIN') eventType = 'RECONCILED';
 
       items.push({
         userId: item.userId,
@@ -503,7 +525,7 @@ class InviteService {
         leftAt: item.leftAt,
         isFake: item.isFake,
         isLeft: item.isLeft,
-        isPreExisting,
+        isReconciled,
         eventType,
       });
     }
@@ -517,7 +539,7 @@ class InviteService {
 
   #inviterLabel(attribution, inviterUser) {
     if (attribution.type === AttributionType.VANITY) return 'Vanity URL';
-    if (attribution.type === AttributionType.PRE_EXISTING) return 'Pre-Bot (Unknown)';
+    if (attribution.type === AttributionType.RECONCILED) return 'Reconciled (Unknown)';
     if (attribution.type === AttributionType.UNKNOWN || !attribution.inviterId) return 'Unknown / Direct';
     return inviterUser?.username || `User_${String(attribution.inviterId).slice(-4)}`;
   }

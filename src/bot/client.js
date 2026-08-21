@@ -5,19 +5,14 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildInvites,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildModeration
   ],
   partials: [
     Partials.User,
-    Partials.GuildMember,
-    Partials.Message,
-    Partials.Channel
+    Partials.GuildMember
   ]
 });
 
 client.commands = new Collection();
-client.cooldowns = new Collection();
 
 module.exports = client;

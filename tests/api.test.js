@@ -14,6 +14,8 @@ async function runApiTests() {
     baseUrl = ctx.baseUrl;
     const stats = await fetch(`${baseUrl}/api/stats`);
     assert.strictEqual(stats.status, 200);
+    const statsData = await stats.json();
+    assert.strictEqual(statsData.telemetry.runtimeVersion, Bun.version);
     const health = await fetch(`${baseUrl}/api/health`);
     assert.strictEqual(health.status, 200);
   });
@@ -43,6 +45,8 @@ async function runApiTests() {
   suite.testAsync('authorized guild access succeeds; unauthorized guild is 403', async () => {
     const ok = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}`, auth);
     assert.strictEqual(ok.status, 200);
+    const guildData = await ok.json();
+    assert.strictEqual(typeof guildData.guild.totalInviters, 'number');
 
     const denied = await fetch(`${baseUrl}/api/guilds/otherguild`, auth);
     assert.strictEqual(denied.status, 403);
@@ -131,6 +135,16 @@ async function runApiTests() {
 
     const hist = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/history?limit=3`, withAuth);
     assert.strictEqual(hist.status, 200);
+    const historyData = await hist.json();
+    if (historyData.history.length > 0) {
+      const historyRow = historyData.history[0];
+      for (const key of ['userId', 'inviterId', 'inviteCode', 'inviteLabel', 'channelName', 'joinedAt', 'leftAt', 'isFake', 'isLeft']) {
+        assert.ok(Object.hasOwn(historyRow, key), `history response must contain ${key}`);
+      }
+      for (const key of ['user_id', 'inviter_id', 'invite_code', 'invite_label', 'channel_name', 'joined_at', 'left_at', 'is_fake', 'is_left']) {
+        assert.ok(!Object.hasOwn(historyRow, key), `history response must not contain ${key}`);
+      }
+    }
 
     const log = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/activity-log?limit=5`, withAuth);
     const logData = await log.json();
@@ -269,13 +283,18 @@ async function runApiTests() {
     assert.strictEqual(data.success, true);
   });
 
-  suite.testAsync('sync-members works in demo and is idempotent', async () => {
+  suite.testAsync('member reconciliation works in demo and is idempotent', async () => {
     const withAuth = { headers: { Cookie: auth.headers.Cookie } };
-    const r1 = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/sync-members`, { method: 'POST', headers: withAuth.headers });
+    const r1 = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/reconcile-members`, { method: 'POST', headers: withAuth.headers });
     assert.strictEqual(r1.status, 200);
-    assert.strictEqual((await r1.json()).success, true);
-    const r2 = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/sync-members`, { method: 'POST', headers: withAuth.headers });
-    assert.strictEqual((await r2.json()).synced, 0);
+    const first = await r1.json();
+    assert.strictEqual(first.success, true);
+    assert.ok(Number.isInteger(first.joined));
+    assert.ok(Number.isInteger(first.left));
+    const r2 = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites/reconcile-members`, { method: 'POST', headers: withAuth.headers });
+    const second = await r2.json();
+    assert.strictEqual(second.joined, 0);
+    assert.strictEqual(second.left, 0);
   });
 
   suite.testAsync('MPA pages and static assets serve correctly', async () => {

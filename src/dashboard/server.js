@@ -123,6 +123,14 @@ class DashboardServer {
       });
     });
   }
+
+  stop() {
+    this.io.close();
+    if (!this.server.listening) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      this.server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
 }
 
 module.exports = DashboardServer;

@@ -6,8 +6,7 @@ const AttributionType = Object.freeze({
   INVITE: 'INVITE',
   VANITY: 'VANITY',
   UNKNOWN: 'UNKNOWN',
-  PRE_EXISTING: 'PRE_EXISTING',
-  OAUTH: 'OAUTH',
+  RECONCILED: 'RECONCILED',
 });
 
 const ATTRIBUTION_TYPES = Object.freeze(Object.values(AttributionType));

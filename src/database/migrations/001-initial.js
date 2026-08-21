@@ -1,10 +1,8 @@
 // Initial Mochi schema.
 //
-// Mochi is a new, pre-release project. Early prototype databases from the
-// initial development period were disposable, so their migration history was
-// consolidated into this single clean baseline instead of a chain of same-day
-// compatibility migrations. From the first real deployment onward, migrations
-// are append-only: the next schema change is migration 002.
+// This is the complete application baseline. The bot is new, so there is no
+// compatibility or upgrade path to preserve here. Future production changes
+// can be added as append-only migrations starting at 002.
 //
 // This migration creates the complete current application schema directly:
 // durable lifecycle ledger (invite_events + invite_bonus_adjustments), the
@@ -22,8 +20,18 @@ module.exports = {
         name TEXT NOT NULL,
         icon TEXT,
         fake_threshold_days INTEGER DEFAULT 7,
+        invite_log_channel_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE bot_attributions (
+        guild_id TEXT NOT NULL,
+        bot_user_id TEXT NOT NULL,
+        added_by_user_id TEXT,
+        added_by_username TEXT,
+        added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (guild_id, bot_user_id)
       );
 
       CREATE TABLE inviters (
@@ -96,8 +104,7 @@ module.exports = {
               'INVITE',
               'VANITY',
               'UNKNOWN',
-              'PRE_EXISTING',
-              'OAUTH'
+              'RECONCILED'
             )
           ),
         inviter_id TEXT,

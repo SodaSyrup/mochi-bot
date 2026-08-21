@@ -1,4 +1,3 @@
-require('dotenv').config();
 const path = require('path');
 const crypto = require('crypto');
 
@@ -9,17 +8,6 @@ const DEFAULT_GUILD_PERMISSION_CACHE_TTL_SECONDS = 600;
 
 function resolveAppMode(env = process.env) {
   const explicit = (env.APP_MODE || '').trim().toLowerCase();
-
-  // Legacy compatibility: DEMO_MODE=true historically enabled the sandbox.
-  // Normalize it into APP_MODE=demo here so a single concept drives the app.
-  if (env.DEMO_MODE === 'true') {
-    if (explicit && explicit !== 'demo') {
-      console.warn(`[Config] DEMO_MODE=true conflicts with APP_MODE=${explicit}; APP_MODE wins.`);
-    } else {
-      return 'demo';
-    }
-  }
-
   return explicit || 'development';
 }
 
@@ -107,6 +95,14 @@ function buildConfig(env = process.env) {
     10
   );
 
+  const fakeAccountThresholdDays = parseIntegerInRange(
+    env.FAKE_ACCOUNT_THRESHOLD_DAYS,
+    DEFAULT_FAKE_THRESHOLD_DAYS,
+    0,
+    365,
+    'FAKE_ACCOUNT_THRESHOLD_DAYS'
+  );
+
   return {
     app: {
       mode,
@@ -120,7 +116,6 @@ function buildConfig(env = process.env) {
       clientId,
       clientSecret,
       ownerId: env.OWNER_ID || '',
-      defaultPrefix: env.DEFAULT_PREFIX || '!',
       embedColor: env.EMBED_COLOR || '#7c3aed',
     },
     dashboard: {
@@ -134,16 +129,22 @@ function buildConfig(env = process.env) {
       demoPath: demoSqlitePath,
     },
     inviteTracker: {
-      fakeAccountThresholdDays: parseInt(
-        env.FAKE_ACCOUNT_THRESHOLD_DAYS || String(DEFAULT_FAKE_THRESHOLD_DAYS),
-        10
-      ),
+      fakeAccountThresholdDays,
     },
     auth: {
       devAuthBypass,
       permissionTtlSeconds,
     },
   };
+}
+
+function parseIntegerInRange(value, fallback, min, max, name) {
+  if (value === undefined || value === null || String(value).trim() === '') return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`[Config] ${name} must be an integer between ${min} and ${max}.`);
+  }
+  return parsed;
 }
 
 module.exports = buildConfig();

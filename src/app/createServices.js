@@ -27,7 +27,9 @@ const { DiscordOAuthClient } = require('../dashboard/auth/discordOAuthClient');
  * Nothing else in the application decides whether to simulate.
  */
 function createServices({ config, db, eventBus, client, logger }) {
-  const guildRepository = new GuildRepository(db);
+  const guildRepository = new GuildRepository(db, {
+    defaultFakeThresholdDays: config.inviteTracker.fakeAccountThresholdDays,
+  });
   const inviteRepository = new InviteRepository(db);
   const inviteLogRepository = new InviteLogRepository(db);
 

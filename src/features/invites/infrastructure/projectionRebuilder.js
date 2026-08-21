@@ -200,12 +200,12 @@ function rebuildGuildInviteProjections(db, guildId, { dryRun = false } = {}) {
       if (!row.day) continue;
       if (!dayCounts.has(row.day)) dayCounts.set(row.day, { joins: 0, leaves: 0, fakes: 0 });
       const d = dayCounts.get(row.day);
-      if (row.event_type === 'LEAVE') {
-        d.leaves += 1;
-      } else if (row.attribution_type === AttributionType.PRE_EXISTING) {
-        // Pre-existing backfill never produced daily stats at sync time, so
-        // rebuilding must not invent them.
+      if (row.attribution_type === AttributionType.RECONCILED) {
+        // Reconciliation never produces daily stats, so rebuilding must not
+        // invent them.
         continue;
+      } else if (row.event_type === 'LEAVE') {
+        d.leaves += 1;
       } else if (row.is_fake) {
         d.fakes += 1;
       } else {

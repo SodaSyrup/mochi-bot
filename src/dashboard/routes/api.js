@@ -21,7 +21,11 @@ function createApiRouter({ client, config, services }) {
 
   router.use(createStatsRouter({ client, guildGateway: services.guildGateway, config }));
 
-  router.use('/guilds', createGuildRoutes({ guildService: services.guilds, guildAccess: services.guildAccess }));
+  router.use('/guilds', createGuildRoutes({
+    guildService: services.guilds,
+    guildAccess: services.guildAccess,
+    inviteService: services.invites,
+  }));
 
   const guildScoped = [requireAuth, requireGuildAccess(services.guildAccess, { access: 'manage' })];
 

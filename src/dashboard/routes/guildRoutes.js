@@ -7,7 +7,7 @@ const { requireGuildAccess } = require('../auth/requireGuildAccess');
  * The guild listing is the one route that consults GuildAccessService so only
  * manageable guilds (where Mochi is present) are ever shown.
  */
-function createGuildRoutes({ guildService, guildAccess }) {
+function createGuildRoutes({ guildService, guildAccess, inviteService }) {
   const router = express.Router();
 
   router.get('/', requireAuth, async (req, res) => {
@@ -19,6 +19,10 @@ function createGuildRoutes({ guildService, guildAccess }) {
 
   router.get('/:guildId', async (req, res) => {
     const result = await guildService.getGuild(req.params.guildId);
+    result.guild = {
+      ...result.guild,
+      totalInviters: inviteService.getInvitersCount(req.params.guildId),
+    };
     res.json(result);
   });
 

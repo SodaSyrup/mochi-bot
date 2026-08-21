@@ -18,7 +18,7 @@ module.exports = {
       return;
     }
 
-    // Same policy used by historical sync and the simulator.
+    // Same policy used by member reconciliation and the simulator.
     if (!services.policy.shouldTrackMember(memberData)) return;
 
     await services.invites.trackMemberJoin(memberData);

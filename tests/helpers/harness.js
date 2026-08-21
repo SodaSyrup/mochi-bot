@@ -1,8 +1,9 @@
 const assert = require('assert');
 
 /**
- * Lightweight sequential test harness. Tests are queued and run in order;
- * failures are collected and reported without crashing the process mid-suite.
+ * Small adapter around Bun's test runner. Keeping suite construction local to
+ * each file makes the domain tests easy to read while Bun owns scheduling and
+ * reporting. Direct `bun path/to/test.js` execution keeps a sequential fallback.
  */
 class TestSuite {
   constructor(name) {
@@ -23,7 +24,7 @@ class TestSuite {
 
   async run() {
     // Under `bun test`, register each case with Bun's runner so async work is
-    // actually awaited. Standalone / runAll execution uses the sequential path.
+    // actually awaited.
     if (typeof test === 'function') {
       for (const { name, fn } of this.tests) {
         test(`${this.name} > ${name}`, fn);

@@ -52,7 +52,7 @@ class LeaderboardPage {
               <img src="${escapeHtml(r.avatar)}" class="user-cell-avatar" alt="" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
               <div>
                 <div class="user-cell-name">${escapeHtml(r.username)}</div>
-                <div class="user-cell-id">${escapeHtml(r.user_id)}</div>
+                <div class="user-cell-id">${escapeHtml(r.userId)}</div>
               </div>
             </div>
           </td>

@@ -29,7 +29,7 @@ module.exports = {
       fields: [
         { name: '⏱️ Uptime', value: `\`${days}d ${hours}h ${minutes}m ${seconds}s\``, inline: true },
         { name: '💾 Memory (RAM)', value: `\`${ramUsedMB} MB / ${ramTotalMB} GB\``, inline: true },
-        { name: '⚡ Node.js', value: `\`${process.version}\``, inline: true },
+        { name: '⚡ Bun', value: `\`${Bun.version}\``, inline: true },
         { name: '🏰 Servers', value: `\`${totalServers}\``, inline: true },
         { name: '👥 Total Members', value: `\`${totalMembers}\``, inline: true },
         { name: '🏓 Gateway Latency', value: `\`${client.ws.ping}ms\``, inline: true },

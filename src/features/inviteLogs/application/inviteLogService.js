@@ -97,9 +97,9 @@ class InviteLogService {
       content = `**${memberName}** joined and they were invited by **${inviterName}**. **${inviterName}** now has **${total} invite${total === 1 ? '' : 's'}**.`;
     } else if (type === AttributionType.VANITY) {
       content = `**${memberName}** joined via the server vanity URL.`;
-    } else if (type === AttributionType.PRE_EXISTING) {
-      // Pre-existing members are backfilled at startup without an event; this
-      // branch is defensive and must never produce historical spam.
+    } else if (type === AttributionType.RECONCILED) {
+      // Reconciled members are recorded without a live event; this
+      // branch is defensive and must never produce startup spam.
       return;
     } else {
       content = `**${memberName}** joined, but I couldn't determine who invited them.`;

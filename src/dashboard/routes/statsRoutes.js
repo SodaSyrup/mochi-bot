@@ -29,7 +29,7 @@ function createStatsRouter({ client, guildGateway, config }) {
         serverCount: guilds.length,
         memberCount: totalMembers,
         ramMB: (memUsage.heapUsed / 1024 / 1024).toFixed(1),
-        nodeVersion: process.version,
+        runtimeVersion: Bun.version,
         platform: `${os.type()} ${os.release()}`,
       },
     });
