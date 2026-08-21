@@ -1,312 +1,42 @@
-# mochi
+# Mochi
 
-A lightweight Discord invite tracking bot with a live web dashboard, built for Bun and SQLite.
+Mochi is a lightweight Discord invite-tracking bot with a live web dashboard, built for Bun and SQLite.
 
-## Features
+## Quick start
 
-- **Invite tracking**: tracks which invite code was used when a member joins, computes net invites (`regular + bonus - leaves - fake`), flags accounts newer than the configured threshold as fake/suspicious, and handles leaves, vanity URLs, and rejoins.
-- **Invite logs**: post member joins, leaves, and bot add/remove activity to a configurable Discord channel from Dashboard → Settings. Human joins show the inviter and the updated net invite total; bots use separate messages and never count as invites.
-- **Invite campaign labels**: assign custom labels to invite codes (e.g. `twitter-campaign`, `youtube-promo`) via `/invite-label` or the dashboard to track where traffic comes from.
-- **Safety & AutoMod**: view and configure Discord AutoMod rules directly from the dashboard (keyword filters, mention spam, spam presets, member profiles, server verification levels).
-- **Honeypot moderation**: assign a Discord channel where messages trigger a softban and maintain a persistent in-channel kick counter.
-- **Web dashboard**: live event feed over authorized Socket.IO rooms, 7-day join/leave charts, invite code manager, and server safety controls.
-- **Secure by default**: Discord OAuth with state validation, per-guild authorization, authenticated Socket.IO, and no global guild broadcasts.
-- **Fast & light**: uses Bun's native `bun:sqlite` driver with WAL mode for fast local storage.
+Requirements:
 
-## Application Modes
-
-The application runs in exactly one explicit mode, selected by `APP_MODE`:
-
-| Mode | Behavior |
-| --- | --- |
-| `development` | May connect to live Discord if credentials exist. Development auth bypass is available only with explicit opt-in. |
-| `production` | Requires `DISCORD_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET`, a unique `SESSION_SECRET` and valid dashboard URLs; fails startup otherwise. |
-
-## Setup
-
-### Prerequisites
-
-- [Bun](https://bun.sh) (v1.3+)
-- A Discord Bot Application from the [Discord Developer Portal](https://discord.com/developers/applications)
-
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/SodaSyrup/mochi-bot.git
-   cd mochi-bot
-   bun install
-   ```
-
-2. Configure environment variables:
-   ```bash
-   cp .env.example .env
-   ```
-   Fill in your credentials. See `.env.example` for every option and which values are required for production.
-
-3. Deploy slash commands:
-   ```bash
-   bun run deploy-commands
-   ```
-
-   The deployment registers Mochi as a guild-installed application with
-   guild-only command contexts. In the Discord Developer Portal, keep
-   **Guild Install** enabled and include both the `bot` and
-   `applications.commands` scopes in the default install settings.
-
-4. Start the application:
-   ```bash
-   bun dev
-   ```
-The dashboard runs at `http://localhost:3000`.
-
-## Built-in Plugins
-
-Mochi uses an explicit built-in plugin catalog. A plugin groups feature
-commands, Discord event handlers, services, dashboard routes and pages,
-realtime mappings, migrations, and lifecycle hooks. Mochi does not scan
-writable directories, install plugins at runtime, or load third-party plugin
-code.
-
-At startup the application validates every manifest, checks dependencies,
-registers contributions, runs enabled plugin migrations, and then starts
-plugins in dependency order. Shutdown stops successfully started plugins in
-reverse order, detaches their listeners, and continues cleanup if one stop
-hook fails.
-
-A plugin manifest contains an ID, name, version, API version, dependency list,
-and a `register(context)` function. Contributions are registered through the
-scoped `services`, `commands`, `discordEvents`, `dashboardApi`, `pages`, and
-`realtime` registries. IDs and command names must be unique; missing or
-circular dependencies fail startup.
-
-The initial catalog contains `utility`, `invites`, `invite-logs`, `safety`,
-and `honeypot`. Disable built-ins globally with a comma-separated
-`DISABLED_PLUGINS` value, for example `DISABLED_PLUGINS=honeypot,safety`.
-Dependencies are strict: disabling `invites` while `invite-logs` is enabled
-is a startup error. The dashboard also provides per-guild enable/disable
-controls for built-in plugins.
-
-Plugin migrations are namespaced by plugin ID and recorded in
-`plugin_schema_migrations`. They run in ascending version order, each migration
-and its record run in one transaction, and there are no automatic down
-migrations. Disabled plugins do not run migrations and their existing tables
-are never removed. Migration `001` remains unchanged.
-
-### Run with PM2
-
-Install the dependencies on the server, then start Mochi through the Bun runtime:
+- [Bun](https://bun.sh) 1.3 or later
+- A Discord bot application from the [Discord Developer Portal](https://discord.com/developers/applications)
 
 ```bash
-bun install --production
-bun run pm2:start
-bun run pm2:startup
+git clone https://github.com/SodaSyrup/mochi-bot.git
+cd mochi-bot
+bun install
+cp .env.example .env
+bun run deploy-commands
+bun dev
 ```
 
-Run the command printed by `pm2:startup` with the required system privileges.
-Then save the current process list:
+The dashboard is available at <http://localhost:3000>. Configure `.env` before deploying; production has stricter startup validation than development.
 
-```bash
-bun run pm2:save
-```
+## What Mochi provides
 
-The ecosystem file keeps the process running, restarts it after crashes, and
-writes logs to `logs/pm2-out.log` and `logs/pm2-error.log`. Keep application
-settings and secrets in `.env`; after changing them, run:
+- Invite attribution, net-invite tracking, campaign labels, leaves, rejoins, vanity URLs, and suspicious-account handling
+- Configurable invite logs for joins, leaves, and bot add/remove activity
+- A dashboard with live events, analytics, invite management, AutoMod controls, a honeypot, and plugin settings
+- Discord OAuth, per-guild authorization, authenticated realtime rooms, and server-side sessions
+- Explicit built-in plugins for utility commands, invites, invite logs, safety, and honeypot moderation
 
-```bash
-bun run pm2:restart
-```
+## Documentation
 
-Useful commands are `bun run pm2:logs`, `bun run pm2:stop`, and
-`bun run pm2:delete`.
+Read the [documentation home](docs/README.md) for the full guides:
 
-## Invite Logs
-
-Invite logging is configured per guild from **Dashboard → Settings → Invite logs** (channel picker). When a channel is selected, Mochi posts plain-text logs there for member joins, leaves, and bot add/remove activity.
-
-- **Human joins** show the member, the inviter, and the inviter's updated net invite total (from the canonical `inviter_stats` view — the same number used everywhere else). Suspicious/fake accounts keep their existing counting semantics and are still logged.
-- **Human leaves** show the recorded inviter.
-- **UNKNOWN attribution is never guessed** — joins show "couldn't determine who invited them", leaves show "no recorded inviter".
-- **Vanity joins/leaves** have their own dedicated wording.
-- **Bots use separate `🤖` messages and are never counted as invites.** They never enter `invite_members`, `invite_events`, or inviter totals.
-- **Bot-adder attribution** comes from the Discord audit log and is persisted in `bot_attributions`, so a bot's removal message can still name who originally added it even after a restart.
-- If a log channel is deleted or Mochi lacks permissions, invite processing continues normally; the failure is logged and the channel remains configured until an admin changes it.
-
-### Required Discord permissions
-
-| Feature | Permission |
-| --- | --- |
-| Sending invite logs | `View Channel` + `Send Messages` on the configured channel |
-| Resolving who added a bot | `View Audit Log` (server-level) |
-
-Without `View Audit Log`, bot messages degrade to "I couldn't determine who added it"; human invite logging is unaffected.
-
-## Invite Semantics
-
-Net invites are always computed as:
-
-```
-total = regular + bonus - leaves - fake
-```
-
-This single definition lives in the `inviter_stats` database view — routes, commands and the frontend never recompute it.
-
-- **regular** — attributed `INVITE` joins. A normal invite join increments `regular` even if the member is later classified as suspicious.
-- **bonus** — manual adjustment credit (see `invite_bonus_adjustments`).
-- **leaves** — departures that remove previously earned invite credit. A member already excluded by the fake counter is not double-penalized.
-- **fake** — attributed invite joins classified as suspicious. A suspicious invite contributes `regular +1`, `fake +1`, and earns zero net credit.
-
-## Attribution Types
-
-Membership attribution is stored separately from Discord user IDs (never masquerading as one):
-
-- `INVITE` — credited to a specific Discord inviter via an invite code.
-- `VANITY` — joined via the guild vanity URL.
-- `UNKNOWN` — attribution was ambiguous or unavailable (never guessed).
-- `RECONCILED` — discovered during an authoritative member reconciliation; never earns invite credit.
-
-`inviter_id` means exactly one thing: a Discord user ID, or `null`.
-
-## Realtime Transport Contract
-
-Socket.IO forwards canonical application events to authorized guild rooms through documented transport DTOs (`src/dashboard/realtime/eventMappers.js`). The frontend consumes exactly these shapes — no `user`/`member` aliases.
-
-**`memberJoin` / `memberLeave`**
-
-```json
-{
-  "guildId": "...",
-  "member": { "id": "...", "username": "...", "avatar": "..." },
-  "attribution": { "type": "INVITE", "inviterId": "...", "inviteCode": "..." },
-  "inviter": { "id": "...", "username": "...", "avatar": "..." },
-  "isFake": false,
-  "inviterStats": { "regular": 4, "bonus": 1, "leaves": 1, "fake": 0, "total": 4 },
-  "occurredAt": "..."
-}
-```
-
-**`inviteCreated`**
-
-```json
-{
-  "guildId": "...",
-  "invite": { "code": "...", "url": "...", "uses": 0, "maxUses": 0, "maxAge": 0, "temporary": false, "channelId": "...", "channelName": "...", "inviter": { "id": "...", "username": "..." }, "createdAt": "...", "label": null },
-  "occurredAt": "..."
-}
-```
-
-**`inviteDeleted`** → `{ guildId, code, occurredAt }`
-**`inviteLabelUpdated`** → `{ guildId, code, label, channelId, channelName, occurredAt }`
-**`autoModExecution`** → flat `{ guildId, ruleId, ruleName, action, user, ... }`
-**`autoModRuleUpdated`** → `{ guildId, action, ruleId, name, enabled }`
-
-## Security
-
-- The dashboard requires Discord OAuth2 login (`identify guilds`).
-- OAuth login uses a cryptographically random `state` value stored in the session and validated on callback.
-- Only guilds you can manage **and** that Mochi is a member of are listed/accessible; per-guild routes return `403` otherwise. Guild owners are recognized dynamically from Discord for each server, so no global owner ID is required.
-- **Development auth bypass:** there is **no implicit admin**. When `APP_MODE=development` **and** `DEV_AUTH_BYPASS=true` **and** the request is loopback-only, `/auth/login` may establish a clearly-logged "Development Admin" session without OAuth. With the bypass disabled (the default), missing OAuth configuration means login is simply unavailable — no automatic admin is created. `DEV_AUTH_BYPASS=true` is **forbidden in production**: the application refuses to start.
-- **Guild authorization freshness:** guild-management permissions are fetched from Discord at login and cached in the session. They are NOT trusted for the entire session lifetime — the snapshot expires after `GUILD_PERMISSION_CACHE_TTL_SECONDS` (default 600s) and is refreshed from Discord before protected operations continue. A revoked or invalid OAuth authorization fails closed with `401` (re-login) rather than reusing stale permission data.
-- **Sessions:** OAuth access/refresh tokens live only server-side in the session (`session.discordOAuth`) for refresh support. They are never sent to browser JavaScript, never returned in API JSON, and never logged. `/auth/user` returns only safe public user fields.
-- All `/api/guilds/**` endpoints require authentication and per-guild authorization. `/api/stats` (non-sensitive global telemetry) and `/api/health` are intentionally public for operational health checks; everything else under `/api` is protected.
-- Socket.IO uses the shared Express session for authentication, and room membership is authorized per guild. Guild events are delivered only to the authorized guild room — never globally.
-- Session cookies are `httpOnly`, `sameSite=lax`, and `secure` in production with a non-default name (`mochi.sid`).
-- Sessions are stored server-side in the SQLite database at `SESSION_STORE_PATH` (default `./data/mochi-sessions.sqlite`), so PM2 restarts do not force users to log in again. The browser only receives the signed `mochi.sid` cookie; OAuth tokens never enter browser JavaScript. Keep the session database on persistent storage. For horizontally scaled deployments, use a shared session store instead of the local SQLite file.
-
-## Database
-
-- Schema is managed by versioned migrations in `src/database/migrations/`, recorded in `schema_migrations`.
-- The durable invite lifecycle ledger (`invite_events`) plus bonus adjustment history (`invite_bonus_adjustments`) are the source of truth.
-- `invite_members`, `inviters` and `daily_invite_stats` are projections and can be rebuilt from the ledger.
-- **Invite cache:** the Discord snapshot is authoritative — including an *empty* snapshot. The persisted `invite_cache` is a temporary fallback used only when Discord cannot be queried; a successful empty fetch clears stale cache rows.
-
-Rebuild projections after any manual database fiddling:
-
-```bash
-bun run rebuild-projections                                      # all guilds
-bun run rebuild-projections -- --guild <guildId>                 # one guild
-bun run rebuild-projections -- --guild <guildId> --dry-run        # preview only, no writes
-```
-
-### Migrations & the fresh database baseline
-
-Mochi uses versioned SQLite migrations. The new bot starts with one complete baseline migration; future production schema changes can be added as append-only migrations.
-
-- `001` — the complete current schema: durable invite ledger, projections, invite logs, invite cache/labels, guild settings, and bot attribution.
-- `002` — namespaced plugin migration metadata.
-- `003` — per-guild plugin enablement settings.
-- `004+` — future production schema changes. Migrations are append-only after the initial baseline.
-
-Development databases are disposable while the bot is being built. Reset them explicitly when changing the baseline (this is a manual developer action, never something the application does at startup):
-
-```bash
-rm data/mochi.sqlite
-```
-
-Then start Mochi normally and migration `001` creates the complete clean database.
-
-> **Migration freeze rule:** once Mochi is deployed with a database that must be preserved, never edit, squash, or remove an already-released migration. Need a schema change? Add the next numbered migration (`002`, `003`, …) and leave previously shipped migrations untouched.
-
-## Slash Commands
-
-| Command | Description | Permission |
-| --- | --- | --- |
-| `/invites [user]` | Check invite stats (net, regular, bonus, leaves, fake) | Everyone |
-| `/leaderboard [page]` | Server invite leaderboard | Everyone |
-| `/invite-codes [user]` | List active invite links and usage count | Everyone |
-| `/invite-label <code> [label]` | Set or remove a campaign label on an invite link | Manage Server |
-| `/serverinfo` | Server details, channel counts, and invite telemetry | Everyone |
-| `/userinfo [user]` | User account info, join date, and who invited them | Everyone |
-| `/botinfo` | Bot system telemetry and uptime | Everyone |
-| `/ping` | WebSocket latency | Everyone |
-| `/help` | Command reference and dashboard link | Everyone |
-| `/honeypot <channel>` | Enable or move the softban honeypot | Manage Server |
-
-### Native Discord command permissions
-
-Mochi uses Discord application commands, so command access can be managed by
-Discord itself. After Mochi is installed in a server, open **Server Settings →
-Integrations → Mochi → Manage**. Members with **Manage Server** and **Manage
-Roles** (or administrators) can allow or deny commands for roles, members, and
-channels there.
-
-The registered defaults are `/invite-codes`, `/invite-label`, and `/honeypot`
-for **Manage Server**; the remaining commands are available to everyone by
-default. Discord’s per-command integration settings can then narrow or grant
-access as needed. Re-run `bun run deploy-commands` after changing command
-metadata.
-
-### Honeypot
-
-Use `/honeypot #channel` to assign a text channel. Mochi posts and pins a warning banner there, then softbans members who send messages in it (a ban followed by an immediate unban removes the member and recent messages without keeping a permanent ban). The banner is edited after each successful trigger and its kick count is stored in SQLite.
-
-The bot needs `View Channel`, `Send Messages`, `Embed Links`, and `Ban Members` in the honeypot channel/server. Enable Discord's **Message Content Intent** for the application, since the feature listens for message creation events.
-
-## Dashboard Pages
-
-- `/` — Server overview, quick stats, and real-time live event feed
-- `/analytics` — 7-day join vs leave trends and conversion metrics
-- `/leaderboard` — Complete server inviter rankings
-- `/codes` — Active invite codes with usage counters and custom labels
-- `/safety` — Discord AutoMod rules and server security settings
-- `/honeypot` — Configure the decoy channel and view its softban counter
-- `/settings` — Bot connection status and application configuration
-- `/plugins` — Enable or disable built-in plugins for the selected server
-
-Plugin switches are per-guild and require Manage Server access. A plugin is
-enabled by default unless a setting is saved for that guild. Dependencies are
-enforced when changing state, so a dependency must be enabled before its
-dependent plugin can be enabled, and dependents must be disabled first. The
-application-level `DISABLED_PLUGINS` setting always takes precedence and
-produces a locked plugin entry in the dashboard.
-
-## Testing
-
-Run the full suite:
-
-```bash
-bun test
-```
-
-Tests use isolated in-memory databases and never touch `data/mochi.sqlite`.
+- [Getting started](docs/getting-started.md) — installation, environment configuration, and application modes
+- [Deployment and operations](docs/operations.md) — PM2, database maintenance, migrations, projections, and tests
+- [Invite tracking](docs/features/invites.md) — attribution, invite math, invite logs, and Discord permissions
+- [Moderation features](docs/features/moderation.md) — AutoMod and the honeypot
+- [Dashboard](docs/dashboard.md) — pages, access, and dashboard behavior
+- [Plugins](docs/plugins.md) — built-in catalog, lifecycle, dependencies, and per-guild settings
+- [Slash commands](docs/commands.md) — command reference and native Discord permissions
+- [Architecture and contracts](docs/architecture.md) — security model, database design, and realtime DTOs
