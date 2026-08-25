@@ -7,6 +7,7 @@
     events: Object.freeze([
       'memberJoin', 'memberLeave', 'inviteCreated', 'inviteLabelUpdated',
       'inviteDeleted', 'autoModExecution', 'autoModRuleUpdated', 'honeypotTriggered',
+      'globalBanEnforcement', 'globalBanSettingsUpdated',
     ]),
     limits: Object.freeze({
       analyticsDays: 7,

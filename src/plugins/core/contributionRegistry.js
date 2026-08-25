@@ -84,7 +84,12 @@ class ContributionRegistry {
     if (typeof handler.execute !== 'function') {
       throw new PluginRegistrationError(`Discord event "${handler.name}" must provide execute().`, { pluginId });
     }
-    this.discordEvents.push({ handler, pluginId, source: metadata.source || null, metadata: { ...metadata } });
+    const phase = metadata.phase || 'normal';
+    if (!['guard', 'normal', 'cleanup'].includes(phase)) {
+      throw new PluginRegistrationError(`Discord event "${handler.name}" has an invalid phase.`, { pluginId });
+    }
+    const priority = Number.isInteger(metadata.priority) ? metadata.priority : 0;
+    this.discordEvents.push({ handler, pluginId, source: metadata.source || null, metadata: { ...metadata, phase, priority } });
   }
 
   registerDashboardApi(pluginId, contribution) {

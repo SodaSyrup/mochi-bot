@@ -1,4 +1,4 @@
-const { InviteEvents, SafetyEvents, HoneypotEvents } = require('../../app/eventBus');
+const { InviteEvents, SafetyEvents, HoneypotEvents, GlobalBanEvents } = require('../../app/eventBus');
 
 /**
  * Realtime transport DTO mappers.
@@ -143,6 +143,18 @@ function mapHoneypotTriggeredEvent(event) {
   };
 }
 
+function mapGlobalBanEvent(event) {
+  return {
+    guildId: event.guildId || null,
+    userId: event.userId || null,
+    outcome: event.outcome || null,
+    source: event.source || null,
+    mode: event.mode || null,
+    eventId: event.eventId || null,
+    occurredAt: event.occurredAt || new Date().toISOString(),
+  };
+}
+
 /**
  * Map of canonical application event -> transport mapper.
  * Only events listed here are ever forwarded to clients.
@@ -156,6 +168,8 @@ const EVENT_MAPPERS = Object.freeze({
   [SafetyEvents.AutoModExecution]: mapAutoModExecutionEvent,
   [SafetyEvents.AutoModRuleUpdated]: mapRuleUpdatedEvent,
   [HoneypotEvents.Triggered]: mapHoneypotTriggeredEvent,
+  [GlobalBanEvents.Enforcement]: mapGlobalBanEvent,
+  [GlobalBanEvents.SettingsUpdated]: mapGlobalBanEvent,
 });
 
 function mapApplicationEvent(appEvent, data) {
@@ -174,4 +188,5 @@ module.exports = {
   mapAutoModExecutionEvent,
   mapRuleUpdatedEvent,
   mapHoneypotTriggeredEvent,
+  mapGlobalBanEvent,
 };

@@ -4,6 +4,7 @@ const inviteLogs = require('./builtins/invite-logs');
 const safety = require('./builtins/safety');
 const honeypot = require('./builtins/honeypot');
 const permissionGroups = require('./builtins/permission-groups');
+const globalBans = require('./builtins/global-bans');
 
 module.exports = Object.freeze([
   utility,
@@ -12,4 +13,5 @@ module.exports = Object.freeze([
   safety,
   honeypot,
   permissionGroups,
+  globalBans,
 ]);

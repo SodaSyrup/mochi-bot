@@ -1,4 +1,4 @@
-const { NotFoundError, ValidationError } = require('../../dashboard/errors');
+const { NotFoundError, ValidationError, ForbiddenError } = require('../../dashboard/errors');
 
 /**
  * Guild feature service. Owns guild settings persistence (repository) and
@@ -82,6 +82,23 @@ class GuildService {
       throw new NotFoundError('No roles available for this guild.');
     }
     return roles;
+  }
+
+  async listBans(guildId, options = {}) {
+    try {
+      const result = await this.gateway.fetchBans(guildId, options);
+      if (!result) throw new NotFoundError('Guild is unavailable.');
+      if (result.status === 'permission_denied') {
+        throw new ForbiddenError('Mochi needs the Ban Members permission to read this guild’s ban list.');
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof ForbiddenError || error instanceof NotFoundError) throw error;
+      if (error?.code === 50013 || error?.status === 403) {
+        throw new ForbiddenError('Mochi needs the Ban Members permission to read this guild’s ban list.');
+      }
+      throw error;
+    }
   }
 }
 

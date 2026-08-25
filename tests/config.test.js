@@ -141,6 +141,15 @@ async function runConfigTests() {
     assert.throws(() => buildConfig({ APP_MODE: 'development', PORT: '65536' }), /PORT/);
   });
 
+  suite.test('global registry admin allowlist requires a matching token', () => {
+    const cfg = buildConfig({ APP_MODE: 'development', GLOBAL_BANS_ADMIN_USER_IDS: '123456789012345678', GLOBAL_BANS_ADMIN_TOKEN: 'admin-secret' });
+    assert.deepStrictEqual(cfg.globalBans.adminUserIds, ['123456789012345678']);
+    assert.strictEqual(cfg.globalBans.adminToken, 'admin-secret');
+    assert.throws(() => buildConfig({ APP_MODE: 'development', GLOBAL_BANS_ADMIN_USER_IDS: 'bad', GLOBAL_BANS_ADMIN_TOKEN: 'admin-secret' }), /invalid Discord user ID/);
+    assert.throws(() => buildConfig({ APP_MODE: 'development', GLOBAL_BANS_ADMIN_USER_IDS: '123456789012345678' }), /must be configured together/);
+    assert.throws(() => buildConfig({ APP_MODE: 'development', GLOBAL_BANS_ADMIN_USER_IDS: '123456789012345678,123456789012345678', GLOBAL_BANS_ADMIN_TOKEN: 'admin-secret' }), /duplicate Discord user ID/);
+  });
+
   suite.testAsync('production Socket.IO CORS is not a wildcard', async () => {
     const { EventEmitter } = require('events');
     const DashboardServer = require('../src/dashboard/server');

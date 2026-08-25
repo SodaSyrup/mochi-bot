@@ -1,4 +1,4 @@
-const { InviteEvents, SafetyEvents, HoneypotEvents } = require('../../app/eventBus');
+const { InviteEvents, SafetyEvents, HoneypotEvents, GlobalBanEvents } = require('../../app/eventBus');
 const { mapApplicationEvent } = require('./eventMappers');
 const { UnauthorizedError } = require('../errors');
 
@@ -35,6 +35,8 @@ class SocketGateway {
         { applicationEvent: SafetyEvents.AutoModExecution, socketEvent: 'autoModExecution', map: (data) => mapApplicationEvent(SafetyEvents.AutoModExecution, data), pluginId: 'core-compat' },
         { applicationEvent: SafetyEvents.AutoModRuleUpdated, socketEvent: 'autoModRuleUpdated', map: (data) => mapApplicationEvent(SafetyEvents.AutoModRuleUpdated, data), pluginId: 'core-compat' },
         { applicationEvent: HoneypotEvents.Triggered, socketEvent: 'honeypotTriggered', map: (data) => mapApplicationEvent(HoneypotEvents.Triggered, data), pluginId: 'core-compat' },
+        { applicationEvent: GlobalBanEvents.Enforcement, socketEvent: 'globalBanEnforcement', map: (data) => mapApplicationEvent(GlobalBanEvents.Enforcement, data), pluginId: 'core-compat' },
+        { applicationEvent: GlobalBanEvents.SettingsUpdated, socketEvent: 'globalBanSettingsUpdated', map: (data) => mapApplicationEvent(GlobalBanEvents.SettingsUpdated, data), pluginId: 'core-compat' },
       ];
 
     this.forwarders = new Map(mappings.map((mapping) => [mapping.applicationEvent, mapping.socketEvent]));

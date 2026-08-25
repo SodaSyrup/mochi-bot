@@ -44,11 +44,18 @@ const DEFAULTS = Object.freeze({
     auditBatchLimit: 10,
   }),
   honeypot: Object.freeze({ softBanDeleteMessageSeconds: 24 * 60 * 60 }),
+  globalBans: Object.freeze({
+    syncIntervalSeconds: 30,
+    requestTimeoutMs: 5000,
+    maxCacheStalenessSeconds: 24 * 60 * 60,
+    guildConcurrency: 3,
+    maxJobAttempts: 8,
+  }),
 });
 
 // Kept in the configuration layer to validate DISABLED_PLUGINS without
 // importing plugin modules (some built-in commands import this config).
-const BUILTIN_PLUGIN_IDS = Object.freeze(['utility', 'invites', 'invite-logs', 'safety', 'honeypot', 'permission-groups']);
+const BUILTIN_PLUGIN_IDS = Object.freeze(['utility', 'invites', 'invite-logs', 'safety', 'honeypot', 'permission-groups', 'global-bans']);
 
 const DEFAULT_SECRET = 'mochi_default_secret_please_change_in_production';
 const LEGACY_ENV_KEYS = Object.freeze(['DEMO_MODE', 'DEMO_DATABASE_PATH', 'DEFAULT_PREFIX']);

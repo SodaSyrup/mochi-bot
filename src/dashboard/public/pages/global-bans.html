@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mochi · Global protection</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body data-page="global-bans">
+  <div id="app"><div id="sidebar-root"></div><main class="main-content"><div id="topbar-root"></div><div class="page-container">
+    <section class="view-section active">
+      <div class="page-header"><div><h2>Global protection</h2><p>Apply Mochi’s centrally managed safety registry to this server.</p></div><div class="page-actions"><button class="button button-secondary" onclick="globalBansPage.refresh()"><i class="fa-solid fa-rotate"></i> Refresh</button></div></div>
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">Mode</div><div class="metric-value metric-value-sm" id="global-bans-mode">—</div></div>
+        <div class="metric"><div class="metric-label">Registry entries</div><div class="metric-value" id="global-bans-count">—</div></div>
+        <div class="metric"><div class="metric-label">Sync status</div><div class="metric-value metric-value-sm" id="global-bans-sync">—</div></div>
+        <div class="metric"><div class="metric-label">Queued jobs</div><div class="metric-value" id="global-bans-jobs">—</div></div>
+      </div>
+      <section class="section"><div class="section-header"><div><h3 class="section-title">Configuration</h3><p class="section-description">Enforcement is disabled until this server explicitly enables it.</p></div></div>
+        <div class="panel panel-narrow"><form id="global-bans-form" onsubmit="globalBansPage.save(event)">
+          <div class="form-group"><label class="form-label" for="global-bans-mode-select">Protection mode</label><select id="global-bans-mode-select" class="form-control"><option value="disabled">Disabled</option><option value="alert">Alert moderators</option><option value="enforce">Enforce bans</option></select></div>
+          <div class="form-group"><label class="form-label" for="global-bans-channel">Alert channel (optional)</label><select id="global-bans-channel" class="form-control"><option value="">No alert channel</option></select></div>
+          <div class="form-group"><label class="form-label" for="global-bans-delete">Delete recent messages (seconds)</label><input id="global-bans-delete" class="form-control" type="number" min="0" max="604800" value="0"><div class="form-help">Zero keeps message history. This affects new global bans only.</div></div>
+          <div class="page-actions"><button class="button button-primary" type="submit">Save protection settings</button><button class="button button-secondary" type="button" onclick="globalBansPage.reconcile()">Queue reconciliation</button></div>
+        </form></div>
+      </section>
+      <section class="section"><div class="section-header"><div><h3 class="section-title">Local exemptions</h3><p class="section-description">Exempt a specific user from this server’s global enforcement.</p></div></div>
+        <div class="panel"><form id="global-bans-exemption-form" onsubmit="globalBansPage.addExemption(event)" class="page-actions"><input id="global-bans-user-id" class="form-control" placeholder="Discord user ID" required><input id="global-bans-reason" class="form-control" placeholder="Reason" required><button class="button button-secondary" type="submit">Add exemption</button></form><div id="global-bans-exemptions" class="honeypot-kick-list"><div class="loading-row">Loading exemptions…</div></div></div>
+      </section>
+      <section class="section"><div class="section-header"><div><h3 class="section-title">Recent enforcement activity</h3></div></div><div class="panel"><div id="global-bans-events" class="honeypot-kick-list"><div class="loading-row">Loading activity…</div></div></div></section>
+      <section class="section"><div class="panel honeypot-note"><i class="fa-solid fa-circle-info"></i><div><strong>Revocation behavior</strong><p>Revoking a global entry stops future enforcement and creates a review notice. Mochi never automatically removes an independent local ban.</p></div></div></section>
+    </section>
+  </div></main></div><div id="overlay-root"></div><div id="toast-container"></div>
+  <script src="/js/escapeHtml.js"></script><script src="/js/constants.js"></script><script src="/js/layout.js"></script><script src="/js/shared.js"></script><script src="/js/pages/global-bans.js"></script>
+</body></html>

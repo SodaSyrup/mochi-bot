@@ -13,6 +13,7 @@ The initial catalog contains:
 - `invite-logs`
 - `safety`
 - `honeypot`
+- `global-bans`
 - `permission-groups`
 
 Disable built-in plugins globally with a comma-separated `DISABLED_PLUGINS` value, for example:

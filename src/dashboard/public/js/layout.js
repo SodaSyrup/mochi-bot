@@ -50,6 +50,8 @@
   // exported navigation structure remain compatible while the dashboard can
   // expose the new per-guild plugin controls.
   const PLUGIN_NAV_ITEM = { page: 'plugins', href: '/plugins', icon: 'fa-puzzle-piece', label: 'Plugins' };
+  const GLOBAL_BAN_NAV_ITEM = { page: 'global-bans', href: '/global-bans', icon: 'fa-globe', label: 'Global protection' };
+  const GLOBAL_BAN_REGISTRY_NAV_ITEM = { page: 'global-ban-registry', href: '/global-ban-registry', icon: 'fa-list-check', label: 'Global registry' };
 
   function currentPage() {
     return document.body.dataset.page || 'overview';
@@ -65,6 +67,8 @@
       if (found) return found;
     }
     if (page === PLUGIN_NAV_ITEM.page) return PLUGIN_NAV_ITEM;
+    if (page === GLOBAL_BAN_NAV_ITEM.page) return GLOBAL_BAN_NAV_ITEM;
+    if (page === GLOBAL_BAN_REGISTRY_NAV_ITEM.page) return GLOBAL_BAN_REGISTRY_NAV_ITEM;
     return undefined;
   }
 
@@ -136,6 +140,18 @@
     if (PLUGIN_NAV_ITEM.page === page) pluginLink.classList.add('active');
     nav.appendChild(pluginLink);
 
+    const globalBanLink = el('a', {
+      className: 'nav-item', href: GLOBAL_BAN_NAV_ITEM.href, 'data-page': GLOBAL_BAN_NAV_ITEM.page,
+      'aria-current': GLOBAL_BAN_NAV_ITEM.page === page ? 'page' : 'false',
+    }, [
+      el('i', { className: `fa-solid ${GLOBAL_BAN_NAV_ITEM.icon}`, 'aria-hidden': 'true' }),
+      el('span', {}, [GLOBAL_BAN_NAV_ITEM.label]),
+    ]);
+    if (GLOBAL_BAN_NAV_ITEM.page === page) globalBanLink.classList.add('active');
+    nav.appendChild(globalBanLink);
+
+    if (global.Mochi?.capabilities?.globalBanRegistry) appendRegistryLink(nav, page);
+
     const footer = el('div', { className: 'sidebar-footer' }, [
       el('div', { className: 'sidebar-status', id: 'sidebar-status', 'data-status': 'loading' }, [
         el('span', { className: 'status-dot', 'aria-hidden': 'true' }),
@@ -145,6 +161,38 @@
 
     sidebar.append(header, nav, footer);
     root.appendChild(sidebar);
+  }
+
+  function appendRegistryLink(nav, page = currentPage()) {
+    if (!nav || nav.querySelector('[data-page="global-ban-registry"]')) return;
+    const item = GLOBAL_BAN_REGISTRY_NAV_ITEM;
+    const link = el('a', {
+      className: 'nav-item', href: item.href, 'data-page': item.page,
+      'aria-current': item.page === page ? 'page' : 'false',
+    }, [
+      el('i', { className: `fa-solid ${item.icon}`, 'aria-hidden': 'true' }),
+      el('span', {}, [item.label]),
+    ]);
+    if (item.page === page) link.classList.add('active');
+    nav.appendChild(link);
+    bindNavigationLink(link);
+  }
+
+  function bindNavigationLink(link) {
+    link.addEventListener('click', (e) => {
+      closeDrawer();
+      const href = link.getAttribute('href');
+      if (href === '/global-ban-registry') return;
+      if (href && !href.startsWith('#') && !href.startsWith('http')) {
+        const currentGuildId = global.Mochi?.currentGuildId;
+        if (currentGuildId) {
+          e.preventDefault();
+          const url = new URL(href, global.location.origin);
+          url.searchParams.set('guild', currentGuildId);
+          global.location.href = url.pathname + url.search;
+        }
+      }
+    });
   }
 
   function buildTopbar() {
@@ -205,21 +253,7 @@
    * drawer after any navigation click.
    */
   function setupNavigationLinks() {
-    document.querySelectorAll('.sidebar-nav .nav-item').forEach((link) => {
-      link.addEventListener('click', (e) => {
-        closeDrawer();
-        const href = link.getAttribute('href');
-        if (href && !href.startsWith('#') && !href.startsWith('http')) {
-          const currentGuildId = global.Mochi?.currentGuildId;
-          if (currentGuildId) {
-            e.preventDefault();
-            const url = new URL(href, global.location.origin);
-            url.searchParams.set('guild', currentGuildId);
-            global.location.href = url.pathname + url.search;
-          }
-        }
-      });
-    });
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(bindNavigationLink);
   }
 
   function setupDrawer() {
@@ -260,6 +294,11 @@
     if (textEl) textEl.textContent = text;
   }
 
+  function setCapabilities(capabilities = {}) {
+    const nav = document.querySelector('.sidebar-nav');
+    if (capabilities.globalBanRegistry) appendRegistryLink(nav);
+  }
+
   function init() {
     if (!document.getElementById('sidebar-root')) return;
     buildSidebar();
@@ -269,13 +308,13 @@
     setupDrawer();
   }
 
-  const MochiLayout = { init, setUser, setStatus, NAV_GROUPS };
+  const MochiLayout = { init, setUser, setStatus, setCapabilities, NAV_GROUPS };
   global.MochiLayout = MochiLayout;
 
   // CommonJS export for unit tests (mirrors escapeHtml.js). In the browser the
   // module is loaded as a plain <script> and runs immediately.
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { NAV_GROUPS, PLUGIN_NAV_ITEM, findNavItem, MochiLayout };
+    module.exports = { NAV_GROUPS, PLUGIN_NAV_ITEM, GLOBAL_BAN_REGISTRY_NAV_ITEM, findNavItem, MochiLayout };
   }
 
   if (typeof document !== 'undefined') {

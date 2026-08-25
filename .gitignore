@@ -48,6 +48,8 @@ Thumbs.db
 dist/
 build/
 .cache/
+.wrangler/
+.wrangler-smoke/
 tmp/
 temp/
 coverage/

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { STOP_PROPAGATION } = require('../features/globalBans/application/globalBanService');
 
 /** Compatibility helper. Active runtime discovery is catalog-based. */
 function getFiles(dir) {
@@ -58,9 +59,36 @@ function attachBotContributions(client, contributionRegistry) {
   const logger = loggerFor(client, contributionRegistry);
   contributionRegistry.syncCommands(client);
   const bindings = [];
-  for (const { handler, pluginId } of contributionRegistry.getDiscordEventContributions()) {
-    bindings.push(attachEvent(client, handler, logger, pluginId));
-    logger.info?.('bot', handler.name, 'Attached plugin Discord event', { pluginId });
+  const contributions = contributionRegistry.getDiscordEventContributions();
+  const grouped = new Map();
+  for (const contribution of contributions) {
+    const list = grouped.get(contribution.handler.name) || [];
+    list.push(contribution);
+    grouped.set(contribution.handler.name, list);
+  }
+  for (const [eventName, entries] of grouped) {
+    const ordered = entries.slice().sort((a, b) => {
+      const phaseOrder = { guard: 0, normal: 1, cleanup: 2 };
+      return (phaseOrder[a.metadata?.phase] - phaseOrder[b.metadata?.phase]) ||
+        ((a.metadata?.priority || 0) - (b.metadata?.priority || 0));
+    });
+    const listener = (...args) => {
+      const run = async () => {
+        let stopped = false;
+        for (const entry of ordered) {
+          if (stopped && entry.metadata?.phase !== 'cleanup') continue;
+          const guildId = guildIdFromDiscordArguments(args);
+          const settings = client.services?.pluginSettings;
+          if (entry.metadata?.runWhenGuildPluginDisabled !== true && entry.pluginId !== 'core' && guildId && settings && !settings.isEnabled(guildId, entry.pluginId)) continue;
+          const result = await entry.handler.execute(...args, client);
+          if (result === STOP_PROPAGATION || result?.stopPropagation === true || result?.[STOP_PROPAGATION]) stopped = true;
+        }
+      };
+      run().catch((error) => logger.error?.('bot', eventName, 'Event handler failed', { error }));
+    };
+    client.on(eventName, listener);
+    bindings.push({ eventName, listener, pluginId: 'dispatcher' });
+    logger.info?.('bot', eventName, 'Attached ordered plugin event dispatcher', { contributions: ordered.length });
   }
   return bindings;
 }

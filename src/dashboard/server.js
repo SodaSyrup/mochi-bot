@@ -11,6 +11,8 @@ const { createAuthRoutes } = require('./routes/authRoutes');
 const { createApiRouter } = require('./routes/api');
 const { apiErrorHandler, apiNotFound } = require('./routes/errorMiddleware');
 const { PluginRegistrationError } = require('../plugins/core/errors');
+const { requireAuth } = require('./auth/requireAuth');
+const { requireGlobalBanAdmin } = require('./auth/requireGlobalBanAdmin');
 
 /**
  * Express + Socket.IO dashboard server. Owns HTTP middleware/session config,
@@ -80,6 +82,9 @@ class DashboardServer {
     // authenticated Express session for room authorization.
     this.io.engine.use(this.sessionMiddleware);
 
+    // HTML pages are served through named routes so page-level authorization
+    // cannot be bypassed via /pages/*.html. CSS and JavaScript remain public.
+    this.app.use('/pages', (req, res) => res.status(404).send('Not found'));
     this.app.use(express.static(path.join(__dirname, 'public')));
   }
 
@@ -101,6 +106,8 @@ class DashboardServer {
 
     const pagesDir = path.join(__dirname, 'public', 'pages');
     const page = (file) => (req, res) => res.sendFile(path.join(pagesDir, file));
+
+    this.app.get('/global-ban-registry', requireAuth, requireGlobalBanAdmin(this.config), page('global-ban-registry.html'));
 
     const pageContributions = this.contributions?.getPageContributions?.() || [];
     if (this.contributions) {

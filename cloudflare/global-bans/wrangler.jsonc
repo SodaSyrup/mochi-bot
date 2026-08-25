@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mochi-global-bans",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-25",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mochi-global-bans",
+      "database_id": "036c25c7-cc8e-4adb-ad75-f12a84d28fba",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "API_VERSION": "1"
+  }
+}

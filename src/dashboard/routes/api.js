@@ -10,6 +10,8 @@ const { createHoneypotRoutes } = require('./honeypotRoutes');
 const { createPluginRoutes } = require('./pluginRoutes');
 const { requireGuildPlugin } = require('../auth/requireGuildPlugin');
 const { PluginRegistrationError } = require('../../plugins/core/errors');
+const { requireGlobalBanAdmin } = require('../auth/requireGlobalBanAdmin');
+const { createGlobalBanRegistryRoutes } = require('./globalBanRegistryRoutes');
 
 /**
  * Aggregator router. Mounts feature routers; applies authentication and per-
@@ -28,6 +30,14 @@ function createApiRouter({ client, config, services, contributions = null }) {
     guildService: services.guilds,
     guildAccess: services.guildAccess,
     inviteService: services.invites,
+  }));
+
+  router.use('/global-ban-registry', requireAuth, requireGlobalBanAdmin(config), createGlobalBanRegistryRoutes({
+    adminClient: services.globalBanAdminClient,
+    config,
+    guildAccess: services.guildAccess,
+    recommendationService: services.globalBanRecommendations,
+    userResolver: services.inviteGateway,
   }));
 
   const guildScoped = [requireAuth, requireGuildAccess(services.guildAccess, { access: 'manage' })];

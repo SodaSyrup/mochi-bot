@@ -269,7 +269,7 @@ function waitFor(fn, timeout = 500) {
 async function runFrontendSmokeTests() {
   const suite = new TestSuite('Frontend Shell Smoke (DOM load)');
 
-  const pages = ['overview', 'analytics', 'leaderboard', 'codes', 'safety', 'honeypot', 'permission-groups', 'settings'];
+  const pages = ['overview', 'analytics', 'leaderboard', 'codes', 'safety', 'honeypot', 'permission-groups', 'settings', 'global-ban-registry'];
 
   for (const page of pages) {
     suite.test(`${page} page scripts load without throwing in a browser-like DOM`, async () => {

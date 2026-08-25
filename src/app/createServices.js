@@ -23,6 +23,13 @@ const { PluginGuildSettingsService } = require('../plugins/core/pluginGuildSetti
 const { PermissionGroupRepository } = require('../features/permissionGroups/infrastructure/permissionGroupRepository');
 const { PermissionGroupService } = require('../features/permissionGroups/permissionGroupService');
 const defaultPluginCatalog = require('../plugins/catalog');
+const { GlobalBanRepository } = require('../features/globalBans/infrastructure/globalBanRepository');
+const { CloudflareGlobalBanClient } = require('../features/globalBans/infrastructure/cloudflareGlobalBanClient');
+const { CloudflareGlobalBanAdminClient } = require('../features/globalBans/infrastructure/cloudflareGlobalBanAdminClient');
+const { GlobalBanSyncService } = require('../features/globalBans/application/globalBanSyncService');
+const { GlobalBanService } = require('../features/globalBans/application/globalBanService');
+const { GlobalBanRecommendationService } = require('../features/globalBans/application/globalBanRecommendationService');
+const { DiscordGlobalBanGateway } = require('../platform/discord/discordGlobalBanGateway');
 
 /**
  * Compose all application services from a config + database + Discord client.
@@ -35,6 +42,7 @@ function createServices({ config, db, eventBus, client, logger, gatewayOverrides
   const inviteLogRepository = new InviteLogRepository(db);
   const honeypotRepository = new HoneypotRepository(db);
   const permissionGroupRepository = new PermissionGroupRepository(db);
+  const globalBanRepository = new GlobalBanRepository(db);
 
   const guildGateway = gatewayOverrides.guild || new DiscordGuildGateway({ client, logger });
   const inviteGateway = gatewayOverrides.invite || new DiscordInviteGateway({ client, logger });
@@ -42,6 +50,19 @@ function createServices({ config, db, eventBus, client, logger, gatewayOverrides
   const inviteLogGateway = gatewayOverrides.inviteLog || new DiscordInviteLogGateway({ client, logger });
   const honeypotGateway = gatewayOverrides.honeypot || new DiscordHoneypotGateway({ client, logger });
   const permissionGroupGateway = gatewayOverrides.permissionGroups || new DiscordPermissionGroupGateway({ client, logger });
+  const globalBanGateway = gatewayOverrides.globalBans || new DiscordGlobalBanGateway({ client, logger });
+  const globalBanClient = gatewayOverrides.globalBansClient || new CloudflareGlobalBanClient({
+    baseUrl: config.globalBans?.apiUrl,
+    token: config.globalBans?.syncToken,
+    timeoutMs: config.globalBans?.requestTimeoutMs,
+    logger,
+  });
+  const globalBanAdminClient = gatewayOverrides.globalBansAdminClient || new CloudflareGlobalBanAdminClient({
+    baseUrl: config.globalBans?.apiUrl,
+    token: config.globalBans?.adminToken,
+    timeoutMs: config.globalBans?.requestTimeoutMs,
+    logger,
+  });
 
   const policy = createInvitePolicy({
     defaultFakeThresholdDays: config.inviteTracker.fakeAccountThresholdDays,
@@ -76,6 +97,23 @@ function createServices({ config, db, eventBus, client, logger, gatewayOverrides
     gateway: permissionGroupGateway,
     logger,
   });
+  let globalBanService;
+  const globalBanSync = new GlobalBanSyncService({
+    repository: globalBanRepository,
+    client: globalBanClient,
+    logger,
+    intervalSeconds: config.globalBans?.syncIntervalSeconds,
+    onEvent: async (result, event) => globalBanService?.onSyncEvent(result, event),
+  });
+  globalBanService = new GlobalBanService({
+    repository: globalBanRepository,
+    gateway: globalBanGateway,
+    sync: globalBanSync,
+    client,
+    eventBus,
+    logger,
+    config,
+  });
   const pluginSettings = new PluginGuildSettingsService({
     db,
     plugins: pluginCatalog,
@@ -103,24 +141,37 @@ function createServices({ config, db, eventBus, client, logger, gatewayOverrides
     isDevelopment: config.app.isDevelopment,
   });
 
+  const globalBanRecommendations = new GlobalBanRecommendationService({
+    guildService: guilds,
+    adminClient: globalBanAdminClient,
+    logger,
+  });
+
   return {
     guildRepository,
     inviteRepository,
     inviteLogRepository,
     honeypotRepository,
     permissionGroupRepository,
+    globalBanRepository,
     guildGateway,
     inviteGateway,
     safetyGateway,
     inviteLogGateway,
     honeypotGateway,
     permissionGroupGateway,
+    globalBanGateway,
+    globalBanClient,
+    globalBanAdminClient,
+    globalBanRecommendations,
     guilds,
     invites,
     safety,
     inviteLogs,
     honeypot,
     permissionGroups,
+    globalBanSync,
+    globalBans: globalBanService,
     pluginSettings,
     policy,
     guildAccess,

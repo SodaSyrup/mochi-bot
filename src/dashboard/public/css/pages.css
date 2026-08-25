@@ -684,6 +684,111 @@
 }
 
 /* ---------------------------------------------------------------- 404 */
+.global-registry-page .form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.global-registry-page .form-group-wide { grid-column: 1 / -1; }
+.global-registry-page .table-wrap { overflow-x: auto; }
+.global-registry-page .data-table td:last-child { white-space: nowrap; }
+.global-registry-page .data-table td .button { margin: 2px; }
+.global-registry-page #registry-search { min-width: 220px; }
+.global-registry-page .registry-entry-identity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 170px;
+}
+.global-registry-page .registry-entry-identity .user-cell-avatar {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+}
+.global-registry-page .registry-entry-details {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.global-registry-page .registry-entry-details strong,
+.global-registry-page .registry-entry-details span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.global-registry-page .registry-entry-details span {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+.global-registry-page .registry-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+}
+.global-registry-page .registry-recommendations-list {
+  display: grid;
+  gap: 10px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+.global-registry-page .registry-recommendation-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  padding: 11px;
+}
+.global-registry-page .registry-recommendation-header,
+.global-registry-page .registry-recommendation-footer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.global-registry-page .registry-recommendation-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.global-registry-page .registry-recommendation-identity {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.global-registry-page .registry-recommendation-identity strong,
+.global-registry-page .registry-recommendation-identity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.global-registry-page .registry-recommendation-identity span,
+.global-registry-page .registry-recommendation-reason {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.global-registry-page .registry-recommendation-reason {
+  margin: 9px 0;
+  overflow-wrap: anywhere;
+}
+.global-registry-page .registry-recommendation-footer {
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding-top: 9px;
+}
+.global-registry-page .registry-recommendation-state {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+.global-registry-page .registry-recommendation-state.is-eligible { color: var(--success, #61d095); }
+.global-registry-page .registry-recommendation-card .button { white-space: nowrap; }
+
+@media (max-width: 980px) {
+  .global-registry-page .registry-workspace { grid-template-columns: 1fr; }
+}
+
+/* ---------------------------------------------------------------- 404 */
 .not-found-page {
   display: flex;
   align-items: center;

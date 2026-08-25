@@ -1,4 +1,4 @@
-const { ChannelType } = require('discord.js');
+const { ChannelType, PermissionFlagsBits } = require('discord.js');
 
 /**
  * Feature-oriented gateway for guild-level reads (listing, channels, roles).
@@ -58,6 +58,34 @@ class DiscordGuildGateway {
       }))
       .sort((a, b) => b.position - a.position);
     return roles.length > 0 ? roles : null;
+  }
+
+  async fetchBans(guildId, { after = null, limit = 25 } = {}) {
+    const guild = this.client?.guilds?.cache?.get(guildId);
+    if (!guild?.bans?.fetch) return null;
+    const me = guild.members?.me;
+    if (me?.permissions?.has && !me.permissions.has(PermissionFlagsBits.BanMembers)) {
+      return { status: 'permission_denied', bans: [], nextCursor: null, hasMore: false };
+    }
+    const boundedLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
+    const collection = await guild.bans.fetch({
+      limit: boundedLimit,
+      ...(after ? { after: String(after) } : {}),
+      cache: false,
+    });
+    const bans = Array.from(collection.values()).map((ban) => ({
+      userId: ban.user?.id,
+      username: ban.user?.username || null,
+      globalName: ban.user?.globalName || null,
+      avatarUrl: ban.user?.displayAvatarURL?.({ dynamic: true }) || null,
+      reason: ban.reason || null,
+    })).filter((ban) => ban.userId);
+    return {
+      status: 'ok',
+      bans,
+      nextCursor: bans.length === boundedLimit ? bans.at(-1)?.userId || null : null,
+      hasMore: bans.length === boundedLimit,
+    };
   }
 }
 

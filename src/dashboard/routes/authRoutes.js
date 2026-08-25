@@ -18,7 +18,7 @@ function isLoopbackAddress(address) {
  * Map the session user to the safe public shape returned to the dashboard.
  * Never includes session id, OAuth tokens, or the raw discordGuilds snapshot.
  */
-function publicUser(user) {
+function publicUser(user, config = null) {
   if (!user) return null;
   return {
     id: user.id,
@@ -27,6 +27,12 @@ function publicUser(user) {
     avatar: user.avatar ?? null,
     tag: user.tag ?? null,
     isDev: Boolean(user.isDev),
+    capabilities: {
+      globalBanRegistry: Boolean(
+        config?.globalBans?.adminToken
+        && config?.globalBans?.adminUserIds?.includes(String(user.id))
+      ),
+    },
   };
 }
 
@@ -65,7 +71,7 @@ function createAuthRoutes({ oauthClient, config, logger }) {
 
   router.get('/user', (req, res) => {
     if (req.session?.user) {
-      return res.json({ authenticated: true, user: publicUser(req.session.user) });
+      return res.json({ authenticated: true, user: publicUser(req.session.user, config) });
     }
     return res.json({ authenticated: false, user: null });
   });

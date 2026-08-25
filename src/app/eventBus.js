@@ -35,4 +35,10 @@ const HoneypotEvents = Object.freeze({
   Triggered: 'honeypot.triggered',
 });
 
-module.exports = { createEventBus, InviteEvents, SafetyEvents, HoneypotEvents };
+const GlobalBanEvents = Object.freeze({
+  SyncChanged: 'globalBans.syncChanged',
+  Enforcement: 'globalBans.enforcement',
+  SettingsUpdated: 'globalBans.settingsUpdated',
+});
+
+module.exports = { createEventBus, InviteEvents, SafetyEvents, HoneypotEvents, GlobalBanEvents };

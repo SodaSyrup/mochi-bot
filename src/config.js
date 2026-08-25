@@ -116,6 +116,25 @@ function buildConfig(env = process.env) {
 
   const disabledPlugins = parseDisabledPlugins(env.DISABLED_PLUGINS);
 
+  const globalBansAdminUserIds = parseDiscordUserIds(env.GLOBAL_BANS_ADMIN_USER_IDS);
+  const globalBansAdminToken = String(env.GLOBAL_BANS_ADMIN_TOKEN || '').trim();
+  if ((globalBansAdminUserIds.length > 0) !== Boolean(globalBansAdminToken)) {
+    throw new Error('[Config] GLOBAL_BANS_ADMIN_USER_IDS and GLOBAL_BANS_ADMIN_TOKEN must be configured together.');
+  }
+
+  const globalBansApiUrl = (env.GLOBAL_BANS_API_URL || '').trim().replace(/\/+$/, '');
+  if (globalBansApiUrl) {
+    try {
+      const parsed = new URL(globalBansApiUrl);
+      if (isProduction && parsed.protocol !== 'https:') {
+        throw new Error('[Config] GLOBAL_BANS_API_URL must use HTTPS in production.');
+      }
+    } catch (error) {
+      if (error.message.startsWith('[Config]')) throw error;
+      throw new Error('[Config] GLOBAL_BANS_API_URL must be a valid absolute URL.');
+    }
+  }
+
   return {
     app: {
       mode,
@@ -163,6 +182,18 @@ function buildConfig(env = process.env) {
     },
     limits: DEFAULTS.limits,
     operations: DEFAULTS.operations,
+    globalBans: {
+      apiUrl: globalBansApiUrl,
+      syncToken: env.GLOBAL_BANS_SYNC_TOKEN || '',
+      adminToken: globalBansAdminToken,
+      adminUserIds: globalBansAdminUserIds,
+      syncIntervalSeconds: parseIntegerInRange(env.GLOBAL_BANS_SYNC_INTERVAL_SECONDS, DEFAULTS.globalBans.syncIntervalSeconds, 5, 24 * 60 * 60, 'GLOBAL_BANS_SYNC_INTERVAL_SECONDS'),
+      requestTimeoutMs: parseIntegerInRange(env.GLOBAL_BANS_REQUEST_TIMEOUT_MS, DEFAULTS.globalBans.requestTimeoutMs, 250, 60 * 1000, 'GLOBAL_BANS_REQUEST_TIMEOUT_MS'),
+      maxCacheStalenessSeconds: parseIntegerInRange(env.GLOBAL_BANS_MAX_CACHE_STALENESS_SECONDS, DEFAULTS.globalBans.maxCacheStalenessSeconds, 60, 30 * 24 * 60 * 60, 'GLOBAL_BANS_MAX_CACHE_STALENESS_SECONDS'),
+      guildConcurrency: parseIntegerInRange(env.GLOBAL_BANS_GUILD_CONCURRENCY, DEFAULTS.globalBans.guildConcurrency, 1, 25, 'GLOBAL_BANS_GUILD_CONCURRENCY'),
+      maxJobAttempts: parseIntegerInRange(env.GLOBAL_BANS_JOB_MAX_ATTEMPTS, DEFAULTS.globalBans.maxJobAttempts, 1, 50, 'GLOBAL_BANS_JOB_MAX_ATTEMPTS'),
+      enforcementEnabled: env.GLOBAL_BANS_ENFORCEMENT_ENABLED !== 'false',
+    },
   };
 }
 
@@ -180,6 +211,18 @@ function parseDisabledPlugins(value) {
   return ids;
 }
 
+function parseDiscordUserIds(value) {
+  if (value === undefined || value === null || String(value).trim() === '') return [];
+  const ids = String(value).split(',').map((id) => id.trim()).filter(Boolean);
+  const seen = new Set();
+  for (const id of ids) {
+    if (!/^\d{5,25}$/.test(id)) throw new Error(`[Config] GLOBAL_BANS_ADMIN_USER_IDS contains invalid Discord user ID "${id}".`);
+    if (seen.has(id)) throw new Error(`[Config] GLOBAL_BANS_ADMIN_USER_IDS contains duplicate Discord user ID "${id}".`);
+    seen.add(id);
+  }
+  return [...seen];
+}
+
 function parseIntegerInRange(value, fallback, min, max, name) {
   if (value === undefined || value === null || String(value).trim() === '') return fallback;
   const parsed = Number(value);
@@ -193,3 +236,4 @@ module.exports = buildConfig();
 module.exports.buildConfig = buildConfig;
 module.exports.resolveDatabasePath = resolveDatabasePath;
 module.exports.parseDisabledPlugins = parseDisabledPlugins;
+module.exports.parseDiscordUserIds = parseDiscordUserIds;

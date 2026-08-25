@@ -63,6 +63,7 @@ class MochiSharedCore {
   constructor() {
     this.currentGuildId = null;
     this.guilds = [];
+    this.capabilities = {};
     this.socket = null;
     this.guildChangeCallbacks = [];
     this.realtimeCallbacks = Object.fromEntries(MOCHI_CONSTANTS.events.map((event) => [event, []]));
@@ -167,6 +168,14 @@ class MochiSharedCore {
     this.socket.on('honeypotTriggered', (payload) => {
       this.triggerRealtime('honeypotTriggered', payload);
     });
+
+    this.socket.on('globalBanEnforcement', (payload) => {
+      this.triggerRealtime('globalBanEnforcement', payload);
+    });
+
+    this.socket.on('globalBanSettingsUpdated', (payload) => {
+      this.triggerRealtime('globalBanSettingsUpdated', payload);
+    });
   }
 
   /**
@@ -264,6 +273,8 @@ class MochiSharedCore {
     try {
       const data = await apiFetch('/auth/user');
       if (data.authenticated && data.user && window.MochiLayout) {
+        this.capabilities = data.user.capabilities || {};
+        window.MochiLayout.setCapabilities?.(this.capabilities);
         window.MochiLayout.setUser({
           username: data.user.username,
           avatar: data.user.avatar,
