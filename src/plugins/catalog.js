@@ -3,6 +3,7 @@ const invites = require('./builtins/invites');
 const inviteLogs = require('./builtins/invite-logs');
 const safety = require('./builtins/safety');
 const honeypot = require('./builtins/honeypot');
+const permissionGroups = require('./builtins/permission-groups');
 
 module.exports = Object.freeze([
   utility,
@@ -10,4 +11,5 @@ module.exports = Object.freeze([
   inviteLogs,
   safety,
   honeypot,
+  permissionGroups,
 ]);

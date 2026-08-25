@@ -35,6 +35,7 @@
       items: [
         { page: 'safety', href: '/safety', icon: 'fa-shield-halved', label: 'Safety' },
         { page: 'honeypot', href: '/honeypot', icon: 'fa-jar', label: 'Honeypot' },
+        { page: 'permission-groups', href: '/permission-groups', icon: 'fa-layer-group', label: 'Permission groups' },
       ],
     },
     {

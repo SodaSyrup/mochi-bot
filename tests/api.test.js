@@ -209,6 +209,45 @@ async function runApiTests() {
     assert.strictEqual((await disabled.json()).honeypot, null);
   });
 
+  suite.testAsync('permission groups manage a shared category layer', async () => {
+    const withAuth = { headers: { Cookie: auth.headers.Cookie } };
+    const initial = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/permission-groups`, withAuth);
+    assert.strictEqual(initial.status, 200);
+    const initialData = await initial.json();
+    assert.strictEqual(initialData.groups.length, 0);
+    assert.strictEqual(initialData.categories.length, 3);
+    assert.strictEqual(initialData.channels.length, 6);
+    assert.strictEqual(initialData.channels.find((channel) => channel.id === 'project_one_chat').parentId, 'cat_project_one');
+
+    const createdResponse = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/permission-groups`, {
+      method: 'POST',
+      headers: { ...withAuth.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Projects',
+        categoryIds: ['cat_project_one', 'cat_project_two'],
+        rules: [
+          { roleId: 'role_mod', permissions: { ViewChannel: 'allow', SendMessages: 'allow' } },
+          { targetType: 'channel', targetId: 'project_one_info', roleId: 'role_mod', permissions: { SendMessages: 'deny' } },
+        ],
+      }),
+    });
+    assert.strictEqual(createdResponse.status, 201);
+    const created = (await createdResponse.json()).group;
+    assert.strictEqual(created.rules[0].permissions.ViewChannel, 'allow');
+    assert.strictEqual(created.rules[1].targetType, 'channel');
+    assert.strictEqual(created.rules[1].targetId, 'project_one_info');
+
+    const synced = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/permission-groups/${created.id}/sync`, {
+      method: 'POST', headers: withAuth.headers,
+    });
+    assert.strictEqual(synced.status, 200);
+
+    const removed = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/permission-groups/${created.id}`, {
+      method: 'DELETE', headers: withAuth.headers,
+    });
+    assert.strictEqual(removed.status, 200);
+  });
+
   suite.testAsync('create/label/revoke invite lifecycle', async () => {
     const withAuth = { headers: { 'Content-Type': 'application/json', Cookie: auth.headers.Cookie } };
     const invalid = await fetch(`${baseUrl}/api/guilds/${DEMO_GUILD_ID}/invites`, {
@@ -307,7 +346,7 @@ async function runApiTests() {
   });
 
   suite.testAsync('MPA pages and static assets serve correctly', async () => {
-    for (const path of ['/', '/analytics', '/leaderboard', '/codes', '/safety', '/settings']) {
+    for (const path of ['/', '/analytics', '/leaderboard', '/codes', '/safety', '/permission-groups', '/settings']) {
       const res = await fetch(`${baseUrl}${path}`);
       assert.strictEqual(res.status, 200, `expected 200 for ${path}`);
     }

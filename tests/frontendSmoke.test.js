@@ -189,6 +189,72 @@ async function runFrontendInviteLogTests() {
   return suite.run();
 }
 
+async function runPermissionGroupLayoutTests() {
+  const suite = new TestSuite('Frontend Permission Group Layout');
+
+  suite.test('keeps the Discord channel tree on the left and group controls on the right', () => {
+    const html = fs.readFileSync(path.join(__dirname, '../src/dashboard/public/pages/permission-groups.html'), 'utf8');
+    const channelBrowser = html.indexOf('class="section permission-channel-browser"');
+    const workspace = html.indexOf('class="permission-group-workspace"');
+    assert.ok(channelBrowser >= 0, 'persistent channel browser must exist');
+    assert.ok(workspace > channelBrowser, 'group workspace must follow the left channel browser');
+    assert.ok(html.includes('id="permission-category-list"'), 'channel tree root must always be present');
+    assert.ok(html.includes('id="selected-target-panel"'), 'target permissions must open from channel selection');
+    assert.ok(!html.includes('Existing Discord permissions'), 'permissions should not be a standalone inventory section');
+    assert.ok(html.includes('id="permission-group-category-options"'), 'category setup controls must live in the right editor');
+    assert.ok(html.includes('id="permission-group-editor" hidden'), 'group editor remains contextual on the right');
+    assert.ok(html.includes('/js/pages/permission-groups.js?v=6'), 'page script must be cache-versioned');
+  });
+
+  suite.testAsync('renders channels immediately without selecting a group', async () => {
+    const { document, byId } = createDomStub();
+    byId.set('permission-category-list', makeElement('div'));
+    byId.set('permission-group-list', makeElement('div'));
+    byId.set('selected-target-panel', makeElement('section'));
+    byId.set('selected-target-title', makeElement('h3'));
+    byId.set('selected-target-overwrites', makeElement('div'));
+    byId.set('permission-group-editor', makeElement('section'));
+
+    const sandbox = {
+      window: null,
+      document,
+      apiFetch: async () => ({
+        groups: [],
+        categories: [{ id: 'cat', name: 'Project', position: 1 }],
+        channels: [
+          { id: 'chat', name: 'project-chat', type: 0, parentId: 'cat', position: 1 },
+          { id: 'welcome', name: 'welcome', type: 0, parentId: null, position: 0 },
+        ],
+        roles: [],
+        permissions: [],
+      }),
+      Mochi: { onGuildChange() {}, showToast() {} },
+      confirm: () => true,
+      console: { log() {}, warn() {}, error() {}, info() {} },
+    };
+    sandbox.window = sandbox;
+    loadModule('src/dashboard/public/js/pages/permission-groups.js', sandbox);
+    await sandbox.permissionGroupsPage.load('guild');
+
+    const tree = byId.get('permission-category-list');
+    const descendants = [];
+    const visit = (node) => {
+      descendants.push(node);
+      for (const child of node.children || []) visit(child);
+    };
+    visit(tree);
+    assert.ok(descendants.some((node) => node.textContent === 'Project'), 'category must render before group selection');
+    assert.ok(descendants.some((node) => node.textContent === 'project-chat'), 'channel must render before group selection');
+    assert.ok(descendants.some((node) => node.textContent === 'welcome'), 'uncategorized channel must not break the tree');
+    assert.strictEqual(sandbox.permissionGroupsPage.editingId, null);
+    sandbox.permissionGroupsPage.selectTarget({ id: 'cat', name: 'Project', type: 'category' });
+    assert.strictEqual(byId.get('selected-target-panel').hidden, false, 'clicking a category must open its permissions');
+    assert.strictEqual(byId.get('selected-target-title').textContent, 'Category · Project');
+  });
+
+  return suite.run();
+}
+
 function waitFor(fn, timeout = 500) {
   return new Promise((resolve) => {
     const start = Date.now();
@@ -203,7 +269,7 @@ function waitFor(fn, timeout = 500) {
 async function runFrontendSmokeTests() {
   const suite = new TestSuite('Frontend Shell Smoke (DOM load)');
 
-  const pages = ['overview', 'analytics', 'leaderboard', 'codes', 'safety', 'honeypot', 'settings'];
+  const pages = ['overview', 'analytics', 'leaderboard', 'codes', 'safety', 'honeypot', 'permission-groups', 'settings'];
 
   for (const page of pages) {
     suite.test(`${page} page scripts load without throwing in a browser-like DOM`, async () => {
@@ -265,10 +331,10 @@ async function runFrontendSmokeTests() {
   return suite.run();
 }
 
-module.exports = { runFrontendSmokeTests, runFrontendInviteLogTests };
+module.exports = { runFrontendSmokeTests, runFrontendInviteLogTests, runPermissionGroupLayoutTests };
 
 if (require.main === module) {
-  Promise.all([runFrontendSmokeTests(), runFrontendInviteLogTests()]).then((results) => {
+  Promise.all([runFrontendSmokeTests(), runFrontendInviteLogTests(), runPermissionGroupLayoutTests()]).then((results) => {
     const failed = results.reduce((a, b) => a + b, 0);
     if (typeof test !== 'function') process.exit(failed ? 1 : 0);
   });

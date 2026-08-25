@@ -6,6 +6,7 @@ const { DemoInviteGateway } = require('./demo/demoInviteGateway');
 const { DemoSafetyGateway } = require('./demo/demoSafetyGateway');
 const { DemoInviteLogGateway } = require('./demo/demoInviteLogGateway');
 const { DemoHoneypotGateway } = require('./demo/demoHoneypotGateway');
+const { DemoPermissionGroupGateway } = require('./demo/demoPermissionGroupGateway');
 const { seedDemoData } = require('./demo/seedDemoData');
 
 const silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
@@ -30,6 +31,7 @@ async function startTestServer({ mode = 'development', seed = true, client = nul
     safety: new DemoSafetyGateway(),
     inviteLog: new DemoInviteLogGateway(),
     honeypot: new DemoHoneypotGateway(),
+    permissionGroups: new DemoPermissionGroupGateway(),
   } : undefined);
   const { dashboard, services: composedServices } = await createApplication({
     config,

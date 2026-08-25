@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mochi · Permission groups</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍡</text></svg>">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/dashboard.css?v=3">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body data-page="permission-groups">
+  <div id="app">
+    <div id="sidebar-root"></div>
+    <main class="main-content">
+      <div id="topbar-root"></div>
+      <div class="page-container">
+        <div class="page-header">
+          <div>
+            <h2>Permission groups</h2>
+            <p>Manage shared role permissions across project categories as one logical category.</p>
+          </div>
+          <div class="page-actions">
+            <button class="button button-primary" id="new-permission-group"><i class="fa-solid fa-plus" aria-hidden="true"></i> New group</button>
+          </div>
+        </div>
+        <section class="section">
+          <div class="panel permission-group-note">
+            <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+            <div><strong>Shared layer</strong><p>Mochi changes only the permissions listed in a group. Project-specific role overwrites and all other category permissions remain untouched.</p></div>
+          </div>
+        </section>
+        <div class="permission-groups-layout">
+          <section class="section permission-channel-browser">
+            <div class="section-header"><div><h3 class="section-title">Server channels</h3><p class="section-description">Always mirrors the current Discord layout and group assignments.</p></div></div>
+            <div class="panel permission-channel-tree" id="permission-category-list"><div class="loading-row">Loading Discord layout…</div></div>
+          </section>
+          <div class="permission-group-workspace">
+            <section class="section selected-target-panel" id="selected-target-panel" hidden>
+              <div class="section-header"><div><h3 class="section-title" id="selected-target-title">Channel permissions</h3><p class="section-description">Current Discord role overwrites for the selected target.</p></div></div>
+              <div class="panel existing-overwrite-list" id="selected-target-overwrites"></div>
+            </section>
+            <section class="section">
+              <div class="section-header"><div><h3 class="section-title">Groups</h3><p class="section-description">Select a group to edit or sync it.</p></div></div>
+              <div class="panel permission-group-list" id="permission-group-list"><div class="loading-row">Loading groups…</div></div>
+            </section>
+            <section class="section permission-group-editor" id="permission-group-editor" hidden>
+              <div class="section-header"><div><h3 class="section-title" id="permission-group-editor-title">New group</h3><p class="section-description">Choose categories on the left, then configure shared permissions here.</p></div></div>
+              <form class="panel" id="permission-group-form">
+                <div class="form-group">
+                  <label class="form-label" for="permission-group-name">Group name</label>
+                  <input class="form-control" id="permission-group-name" maxlength="80" placeholder="Project categories" required>
+                </div>
+                <div class="form-group">
+                  <span class="form-label">Categories in this group</span>
+                  <div class="permission-group-category-options" id="permission-group-category-options"></div>
+                  <div class="form-help">Choose the category headers this group should manage. Their channels remain visible in the server tree on the left.</div>
+                </div>
+                <div class="permission-rule-header">
+                  <div><span class="form-label">Category role rules</span><div class="form-help">These defaults apply to the selected category overwrites.</div></div>
+                  <button type="button" class="button button-secondary button-sm" id="add-permission-rule"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add role</button>
+                </div>
+                <div id="permission-rule-list" class="permission-rule-list"></div>
+                <div class="permission-rule-header permission-channel-rule-header">
+                  <div><span class="form-label">Channel overrides</span><div class="form-help">Configure a role differently on one child channel, such as an announcement channel.</div></div>
+                  <button type="button" class="button button-secondary button-sm" id="add-permission-channel-rule"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add channel rule</button>
+                </div>
+                <div id="permission-channel-rule-list" class="permission-rule-list"></div>
+                <div class="permission-group-form-actions">
+                  <button type="submit" class="button button-primary" id="save-permission-group">Save and apply</button>
+                  <button type="button" class="button button-secondary" id="cancel-permission-group">Cancel</button>
+                  <button type="button" class="button button-danger permission-delete" id="delete-permission-group" hidden>Delete group</button>
+                </div>
+              </form>
+            </section>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <div id="overlay-root"></div>
+  <div id="toast-container"></div>
+  <script src="/js/escapeHtml.js"></script>
+  <script src="/js/constants.js"></script>
+  <script src="/js/layout.js"></script>
+  <script src="/js/shared.js"></script>
+  <script src="/js/pages/permission-groups.js?v=6"></script>
+</body>
+</html>

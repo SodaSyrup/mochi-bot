@@ -24,9 +24,9 @@ The dashboard is available at <http://localhost:3000>. Configure `.env` before d
 
 - Invite attribution, net-invite tracking, campaign labels, leaves, rejoins, vanity URLs, and suspicious-account handling
 - Configurable invite logs for joins, leaves, and bot add/remove activity
-- A dashboard with live events, analytics, invite management, AutoMod controls, a honeypot, and plugin settings
+- A dashboard with live events, analytics, invite management, AutoMod controls, grouped category permissions, a honeypot, and plugin settings
 - Discord OAuth, per-guild authorization, authenticated realtime rooms, and server-side sessions
-- Explicit built-in plugins for utility commands, invites, invite logs, safety, and honeypot moderation
+- Explicit built-in plugins for utility commands, invites, invite logs, safety, grouped category permissions, and honeypot moderation
 
 ## Documentation
 
@@ -36,6 +36,7 @@ Read the [documentation home](docs/README.md) for the full guides:
 - [Deployment and operations](docs/operations.md) — PM2, database maintenance, migrations, projections, and tests
 - [Invite tracking](docs/features/invites.md) — attribution, invite math, invite logs, and Discord permissions
 - [Moderation features](docs/features/moderation.md) — AutoMod and the honeypot
+- [Permission groups](docs/features/permission-groups.md) — shared role permissions across project categories
 - [Dashboard](docs/dashboard.md) — pages, access, and dashboard behavior
 - [Plugins](docs/plugins.md) — built-in catalog, lifecycle, dependencies, and per-guild settings
 - [Slash commands](docs/commands.md) — command reference and native Discord permissions

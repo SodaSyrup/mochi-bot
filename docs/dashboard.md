@@ -12,6 +12,7 @@ The dashboard uses Discord OAuth2 and authorizes access per guild. Only guilds t
 | `/codes` | Active invite codes, usage counters, and custom labels |
 | `/safety` | Discord AutoMod rules and server security settings |
 | `/honeypot` | Decoy-channel configuration and softban counter |
+| `/permission-groups` | Shared role-permission layers for multiple Discord categories |
 | `/settings` | Bot connection status and application configuration, including invite logs |
 | `/plugins` | Enable or disable built-in plugins for the selected server |
 

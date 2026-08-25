@@ -11,6 +11,11 @@ async function runConfigTests() {
     assert.strictEqual(cfg.app.isProduction, false);
   });
 
+  suite.test('permission groups can be disabled through the built-in plugin config', () => {
+    const cfg = buildConfig({ APP_MODE: 'development', DISABLED_PLUGINS: 'permission-groups' });
+    assert.deepStrictEqual(cfg.plugins.disabled, ['permission-groups']);
+  });
+
   suite.test('obsolete environment keys are rejected in every mode', () => {
     assert.throws(
       () => buildConfig({

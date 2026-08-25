@@ -12,6 +12,7 @@ const { DiscordGuildGateway } = require('../platform/discord/discordGuildGateway
 const { DiscordSafetyGateway } = require('../platform/discord/discordSafetyGateway');
 const { DiscordInviteLogGateway } = require('../platform/discord/discordInviteLogGateway');
 const { DiscordHoneypotGateway } = require('../platform/discord/discordHoneypotGateway');
+const { DiscordPermissionGroupGateway } = require('../platform/discord/discordPermissionGroupGateway');
 
 const { GuildAccessService } = require('../dashboard/auth/guildAccessService');
 const { GuildPermissionService } = require('../dashboard/auth/guildPermissionService');
@@ -19,6 +20,8 @@ const { DiscordOAuthClient } = require('../dashboard/auth/discordOAuthClient');
 const { HoneypotRepository } = require('../features/honeypot/infrastructure/honeypotRepository');
 const { HoneypotService } = require('../features/honeypot/honeypotService');
 const { PluginGuildSettingsService } = require('../plugins/core/pluginGuildSettings');
+const { PermissionGroupRepository } = require('../features/permissionGroups/infrastructure/permissionGroupRepository');
+const { PermissionGroupService } = require('../features/permissionGroups/permissionGroupService');
 const defaultPluginCatalog = require('../plugins/catalog');
 
 /**
@@ -31,12 +34,14 @@ function createServices({ config, db, eventBus, client, logger, gatewayOverrides
   const inviteRepository = new InviteRepository(db);
   const inviteLogRepository = new InviteLogRepository(db);
   const honeypotRepository = new HoneypotRepository(db);
+  const permissionGroupRepository = new PermissionGroupRepository(db);
 
   const guildGateway = gatewayOverrides.guild || new DiscordGuildGateway({ client, logger });
   const inviteGateway = gatewayOverrides.invite || new DiscordInviteGateway({ client, logger });
   const safetyGateway = gatewayOverrides.safety || new DiscordSafetyGateway({ client, logger });
   const inviteLogGateway = gatewayOverrides.inviteLog || new DiscordInviteLogGateway({ client, logger });
   const honeypotGateway = gatewayOverrides.honeypot || new DiscordHoneypotGateway({ client, logger });
+  const permissionGroupGateway = gatewayOverrides.permissionGroups || new DiscordPermissionGroupGateway({ client, logger });
 
   const policy = createInvitePolicy({
     defaultFakeThresholdDays: config.inviteTracker.fakeAccountThresholdDays,
@@ -66,6 +71,11 @@ function createServices({ config, db, eventBus, client, logger, gatewayOverrides
     subscribe: !config.plugins?.disabled?.includes('invite-logs'),
   });
   const honeypot = new HoneypotService({ honeypotRepository, honeypotGateway, eventBus, logger });
+  const permissionGroups = new PermissionGroupService({
+    repository: permissionGroupRepository,
+    gateway: permissionGroupGateway,
+    logger,
+  });
   const pluginSettings = new PluginGuildSettingsService({
     db,
     plugins: pluginCatalog,
@@ -98,16 +108,19 @@ function createServices({ config, db, eventBus, client, logger, gatewayOverrides
     inviteRepository,
     inviteLogRepository,
     honeypotRepository,
+    permissionGroupRepository,
     guildGateway,
     inviteGateway,
     safetyGateway,
     inviteLogGateway,
     honeypotGateway,
+    permissionGroupGateway,
     guilds,
     invites,
     safety,
     inviteLogs,
     honeypot,
+    permissionGroups,
     pluginSettings,
     policy,
     guildAccess,
