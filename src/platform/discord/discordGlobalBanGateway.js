@@ -1,4 +1,5 @@
 const { PermissionFlagsBits } = require('discord.js');
+const { buildGlobalBanAlert, buildGlobalBanResolvedUpdate } = require('../../bot/services/globalBanAlert');
 
 class DiscordGlobalBanGateway {
   constructor({ client, logger = console }) {
@@ -50,17 +51,26 @@ class DiscordGlobalBanGateway {
     return { outcome: 'banned' };
   }
 
-  async sendAlert({ guildId, channelId, userId, username, reason, outcome = 'listed' }) {
+  async sendAlert({ guildId, channelId, userId, username, globalName, avatarUrl, reason, outcome = 'listed' }) {
     const guild = this.guild(guildId);
     const channel = channelId ? guild?.channels?.cache?.get(channelId) : null;
     if (!channel?.isTextBased?.() || !channel.send) return { outcome: 'log_channel_unavailable' };
-    const content = [
-      `Global protection alert: ${username || userId} (${userId})`,
-      `Status: ${outcome}`,
-      reason ? `Reason: ${reason}` : null,
-    ].filter(Boolean).join('\n');
-    await channel.send({ content, allowedMentions: { parse: [] } });
+    await channel.send(buildGlobalBanAlert({
+      userId,
+      username,
+      globalName,
+      avatarUrl,
+      reason,
+      stale: outcome === 'cache_stale',
+    }));
     return { outcome: 'alerted' };
+  }
+
+  async markAlertBanned({ message, moderatorUsername, outcome = 'banned' } = {}) {
+    const payload = buildGlobalBanResolvedUpdate(message, { moderatorUsername, outcome });
+    if (!payload || !message?.edit) return { outcome: 'message_unavailable' };
+    await message.edit(payload);
+    return { outcome: 'updated' };
   }
 }
 

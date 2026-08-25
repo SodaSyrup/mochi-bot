@@ -8,13 +8,14 @@ choose `alert` or `enforce` in the dashboard.
 ## Modes
 
 - `disabled`: the registry is not used for this guild.
-- `alert`: listed joins are reported to the configured channel.
+- `alert`: listed joins are reported to the configured channel with the user’s
+  profile, public reason, and a moderator-only Ban action.
 - `enforce`: listed users are permanently banned, including during background
   reconciliation.
 
 Guild-local exemptions are checked before enforcement. Mochi never automatically
-unbans a user when a global entry is revoked; revocation creates a review
-notice instead so an independent local ban is not accidentally removed.
+unbans a user when a global entry is revoked; revocation only cancels pending
+global enforcement work. Existing local bans are never changed automatically.
 
 ## Deployment
 

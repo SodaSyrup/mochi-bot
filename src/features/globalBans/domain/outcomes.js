@@ -3,6 +3,8 @@ const OUTCOMES = Object.freeze({
   ALREADY_BANNED: 'already_banned',
   EXEMPT: 'exempt',
   DISABLED: 'disabled',
+  NOT_LISTED: 'not_listed',
+  POLICY_CHANGED: 'policy_changed',
   ALERTED: 'alerted',
   STALE: 'cache_stale',
   MISSING_PERMISSION: 'missing_permission',

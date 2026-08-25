@@ -45,6 +45,8 @@ const migration = {
   },
 };
 
+const { interactionHandler } = require('./interactionHandler');
+
 const memberGuard = {
   name: 'guildMemberAdd',
   async execute(member, client) {
@@ -103,6 +105,7 @@ module.exports = {
     context.services.register('globalBanGateway', services.globalBanGateway);
     context.services.register('globalBanSync', services.globalBanSync);
     context.discordEvents.register(memberGuard, { source: 'src/plugins/builtins/global-bans/index.js', phase: 'guard', priority: -100 });
+    context.discordEvents.register(interactionHandler, { source: 'src/plugins/builtins/global-bans/interactionHandler.js', phase: 'normal', priority: 0 });
     context.discordEvents.register(ready, { source: 'src/plugins/builtins/global-bans/index.js', phase: 'normal', priority: -100 });
     context.discordEvents.register(guildCreate, { source: 'src/plugins/builtins/global-bans/index.js', phase: 'normal', priority: -100 });
     context.discordEvents.register(guildDelete, { source: 'src/plugins/builtins/global-bans/index.js', phase: 'cleanup', runWhenGuildPluginDisabled: true });

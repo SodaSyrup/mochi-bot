@@ -16,6 +16,7 @@ class GlobalBanService {
     this.config = config.globalBans || {};
     this.workerTimer = null;
     this.workerRunning = false;
+    this.alertBanQueues = new Map();
   }
 
   async start() {
@@ -56,13 +57,6 @@ class GlobalBanService {
       }
     } else {
       this.repository.cancelForUser(record.user_id);
-      const guilds = [...(this.client?.guilds?.cache?.values?.() || [])];
-      for (const guild of guilds) {
-        const settings = this.repository.getGuildSettings(guild.id);
-        if (settings.mode !== 'disabled' && settings.log_channel_id) {
-          this.repository.enqueue({ guildId: guild.id, userId: record.user_id, sourceEventId: event.event_id || record.last_event_id, action: 'revocation_notice' });
-        }
-      }
     }
     this.eventBus?.emit(GlobalBanEvents.SyncChanged, { userId: record.user_id, state: record.state, eventId: event.event_id || null, occurredAt: new Date().toISOString() });
   }
@@ -91,21 +85,31 @@ class GlobalBanService {
   async #alert(settings, guildId, member, record, outcome) {
     if (!settings.log_channel_id) return { outcome: 'no_log_channel' };
     try {
-      await this.gateway.sendAlert({ guildId, channelId: settings.log_channel_id, userId: member.id, username: member.user?.username, reason: record.public_reason, outcome });
+      await this.gateway.sendAlert({
+        guildId,
+        channelId: settings.log_channel_id,
+        userId: member.id,
+        username: member.user?.username,
+        globalName: member.user?.globalName,
+        avatarUrl: member.user?.displayAvatarURL?.({ extension: 'png', size: 256 }) || null,
+        reason: record.public_reason || record.reason_code,
+        outcome,
+      });
     } catch (error) {
       this.logger.warn?.('global-bans', 'alert', 'Could not send global-ban alert.', { guildId, userId: member.id, errorCode: error.code || error.name });
     }
   }
 
-  async #ban({ guildId, userId, member, record, settings, source }) {
+  async #ban({ guildId, userId, record, settings, source, moderatorId = null }) {
     try {
+      const moderatorSuffix = moderatorId ? ` | moderator=${moderatorId}` : '';
       const result = await this.gateway.banUser({
         guildId,
         userId,
         deleteMessageSeconds: settings.delete_message_seconds,
-        reason: `Mochi global protection | event=${record.last_event_id} | code=${record.reason_code || 'listed'}`,
+        reason: `Mochi global protection | event=${record.last_event_id} | code=${record.reason_code || 'listed'}${moderatorSuffix}`,
       });
-      this.eventBus?.emit(GlobalBanEvents.Enforcement, { guildId, userId, outcome: result.outcome, source, occurredAt: new Date().toISOString() });
+      this.eventBus?.emit(GlobalBanEvents.Enforcement, { guildId, userId, outcome: result.outcome, source, moderatorId: moderatorId || null, occurredAt: new Date().toISOString() });
       return result;
     } catch (error) {
       const outcome = error?.status >= 500 || error?.status === 429 ? OUTCOMES.TRANSIENT_ERROR : OUTCOMES.PERMANENT_ERROR;
@@ -114,21 +118,48 @@ class GlobalBanService {
     }
   }
 
+  async banFromAlert({ guildId, userId, moderatorId } = {}) {
+    const id = normalizeUserId(userId);
+    if (!guildId || !id || !normalizeUserId(moderatorId)) return { outcome: OUTCOMES.POLICY_CHANGED };
+    const key = `${guildId}:${id}`;
+    const previous = this.alertBanQueues.get(key) || Promise.resolve();
+    const operation = previous.catch(() => {}).then(() => this.#banFromAlert({ guildId, userId: id, moderatorId }));
+    this.alertBanQueues.set(key, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.alertBanQueues.get(key) === operation) this.alertBanQueues.delete(key);
+    }
+  }
+
+  async #banFromAlert({ guildId, userId, moderatorId }) {
+    const settings = this.repository.getGuildSettings(guildId);
+    if (settings.mode !== 'alert' || this.config.enforcementEnabled === false) return { outcome: OUTCOMES.POLICY_CHANGED };
+    const record = this.repository.getCache(userId);
+    if (!isActiveRecord(record)) return { outcome: OUTCOMES.NOT_LISTED };
+    if (this.repository.getExemption(guildId, userId)) return { outcome: OUTCOMES.EXEMPT, record };
+    if (!this.isFreshEnough()) return { outcome: OUTCOMES.STALE, record };
+
+    const result = await this.#ban({ guildId, userId, record, settings, source: 'alert_button', moderatorId });
+    this.repository.recordEnforcementEvent?.({
+      guildId,
+      userId,
+      sourceEventId: record.last_event_id,
+      action: 'moderator_ban',
+      outcome: result.outcome,
+      detailsCode: `MODERATOR_${moderatorId}`,
+    });
+    return { ...result, record };
+  }
+
   async processJobs() {
     if (!this.workerRunning || !this.config.enforcementEnabled) return;
     const jobs = this.repository.claimDueJobs(Math.max(1, Number(this.config.guildConcurrency) || 3));
     for (const job of jobs) {
       const settings = this.repository.getGuildSettings(job.guild_id);
       const record = this.repository.getCache(job.user_id);
-      if (job.action === 'revocation_notice') {
-        if (settings.log_channel_id) {
-          try {
-            await this.gateway.sendAlert({ guildId: job.guild_id, channelId: settings.log_channel_id, userId: job.user_id, reason: 'Global entry revoked; review any existing local ban.', outcome: 'revocation_review' });
-            this.repository.completeJob(job, { outcome: 'alerted', detailsCode: 'REVOCATION_REVIEW' });
-          } catch (error) {
-            this.repository.completeJob(job, { outcome: 'failed', retry: true, errorCode: error.code || 'ALERT_FAILED' });
-          }
-        } else this.repository.completeJob(job, { outcome: 'skipped', detailsCode: 'NO_LOG_CHANNEL' });
+      if (job.action !== 'ban') {
+        this.repository.completeJob(job, { outcome: 'skipped', detailsCode: 'UNSUPPORTED_ACTION' });
         continue;
       }
       if (settings.mode !== 'enforce' || !record || !isActiveRecord(record) || this.repository.getExemption(job.guild_id, job.user_id)) {

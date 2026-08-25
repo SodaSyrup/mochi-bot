@@ -275,6 +275,13 @@ class GlobalBanRepository {
     })();
   }
 
+  recordEnforcementEvent({ jobId = null, guildId, userId, sourceEventId = 0, action, outcome, detailsCode = null } = {}) {
+    this.db.prepare(`
+      INSERT INTO global_ban_enforcement_events (job_id, guild_id, user_id, source_event_id, action, outcome, details_code)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(jobId, guildId, userId, Number(sourceEventId) || 0, action || 'ban', outcome || 'unknown', detailsCode);
+  }
+
   getRecentEvents(guildId, limit = 25) {
     return this.db.prepare('SELECT * FROM global_ban_enforcement_events WHERE guild_id = ? ORDER BY occurred_at DESC, id DESC LIMIT ?').all(guildId, limit);
   }

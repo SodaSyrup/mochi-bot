@@ -88,6 +88,136 @@ async function runGlobalBanTests() {
     assert.strictEqual(called, false);
   });
 
+  suite.test('alert mode sends a join alert with the member identity and does not ban automatically', async () => {
+    const repository = makeRepository();
+    repository.applyEvent(activeEvent());
+    repository.setGuildSettings('guild-a', { mode: 'alert', logChannelId: 'alerts' });
+    repository.setSyncSuccess({ cursor: 1 });
+    const alerts = [];
+    let banned = false;
+    const service = new GlobalBanService({
+      repository,
+      config: { globalBans: { enforcementEnabled: true, maxCacheStalenessSeconds: 60 } },
+      gateway: {
+        async sendAlert(input) { alerts.push(input); },
+        async banUser() { banned = true; return { outcome: 'banned' }; },
+      },
+      sync: null,
+      client: { guilds: { cache: new Map() } },
+    });
+
+    const result = await service.evaluateMember({
+      id: '123456789',
+      guild: { id: 'guild-a' },
+      user: {
+        username: 'bad-account',
+        globalName: 'Bad Account',
+        displayAvatarURL: () => 'https://cdn.example/avatar.png',
+      },
+    });
+
+    assert.strictEqual(result.outcome, 'alerted');
+    assert.strictEqual(banned, false);
+    assert.strictEqual(alerts.length, 1);
+    assert.strictEqual(alerts[0].username, 'bad-account');
+    assert.strictEqual(alerts[0].globalName, 'Bad Account');
+    assert.strictEqual(alerts[0].avatarUrl, 'https://cdn.example/avatar.png');
+  });
+
+  suite.test('revocations cancel jobs without creating alert jobs', async () => {
+    const repository = makeRepository();
+    repository.applyEvent(activeEvent());
+    repository.setGuildSettings('guild-a', { mode: 'alert', logChannelId: 'alerts' });
+    const service = new GlobalBanService({
+      repository,
+      config: { globalBans: { enforcementEnabled: true } },
+      gateway: { async sendAlert() {} },
+      sync: null,
+      client: { guilds: { cache: new Map([['guild-a', { id: 'guild-a' }]]) } },
+    });
+
+    await service.onSyncEvent({ state: repository.getCache('123456789') }, activeEvent());
+    repository.applyEvent({
+      event_id: 2,
+      user_id: '123456789',
+      action: 'revoked',
+      record_payload: { user_id: '123456789', state: 'revoked', version: 3 },
+    });
+    await service.onSyncEvent({ state: repository.getCache('123456789') }, {
+      event_id: 2,
+      user_id: '123456789',
+      action: 'revoked',
+    });
+
+    assert.strictEqual(repository.getJobStats('guild-a').length, 0);
+  });
+
+  suite.test('legacy revocation jobs are drained without sending a message', async () => {
+    const repository = makeRepository();
+    repository.applyEvent(activeEvent());
+    repository.setGuildSettings('guild-a', { mode: 'alert', logChannelId: 'alerts' });
+    repository.enqueue({ guildId: 'guild-a', userId: '123456789', sourceEventId: 1, action: 'revocation_notice' });
+    let alerted = false;
+    const service = new GlobalBanService({
+      repository,
+      config: { globalBans: { enforcementEnabled: true, guildConcurrency: 1 } },
+      gateway: { async sendAlert() { alerted = true; } },
+      sync: null,
+      client: { guilds: { cache: new Map() } },
+    });
+    service.workerRunning = true;
+    await service.processJobs();
+
+    assert.strictEqual(alerted, false);
+    assert.strictEqual(repository.getRecentEvents('guild-a')[0].details_code, 'UNSUPPORTED_ACTION');
+  });
+
+  suite.test('alert button revalidates policy, bans by ID, and records the moderator', async () => {
+    const repository = makeRepository();
+    repository.applyEvent(activeEvent());
+    repository.setGuildSettings('guild-a', { mode: 'alert', deleteMessageSeconds: 60 });
+    repository.setSyncSuccess({ cursor: 1 });
+    const calls = [];
+    const service = new GlobalBanService({
+      repository,
+      config: { globalBans: { enforcementEnabled: true, maxCacheStalenessSeconds: 60 } },
+      gateway: {
+        async banUser(input) { calls.push(input); return { outcome: 'banned' }; },
+      },
+      sync: null,
+      client: { guilds: { cache: new Map() } },
+    });
+
+    const result = await service.banFromAlert({ guildId: 'guild-a', userId: '123456789', moderatorId: '987654321' });
+    const event = repository.getRecentEvents('guild-a')[0];
+    assert.strictEqual(result.outcome, 'banned');
+    assert.strictEqual(calls[0].userId, '123456789');
+    assert.strictEqual(calls[0].deleteMessageSeconds, 60);
+    assert.ok(calls[0].reason.includes('moderator=987654321'));
+    assert.strictEqual(event.action, 'moderator_ban');
+    assert.strictEqual(event.details_code, 'MODERATOR_987654321');
+  });
+
+  suite.test('alert button refuses a revoked entry and local exemption', async () => {
+    const repository = makeRepository();
+    repository.applyEvent(activeEvent());
+    repository.setGuildSettings('guild-a', { mode: 'alert' });
+    repository.setSyncSuccess({ cursor: 1 });
+    const service = new GlobalBanService({
+      repository,
+      config: { globalBans: { enforcementEnabled: true, maxCacheStalenessSeconds: 60 } },
+      gateway: { async banUser() { throw new Error('must not ban'); } },
+      sync: null,
+      client: { guilds: { cache: new Map() } },
+    });
+
+    repository.setExemption('guild-a', '123456789', { reason: 'Review', createdBy: 'mod' });
+    assert.strictEqual((await service.banFromAlert({ guildId: 'guild-a', userId: '123456789', moderatorId: '987654321' })).outcome, 'exempt');
+    repository.deleteExemption('guild-a', '123456789');
+    repository.applyEvent({ event_id: 2, user_id: '123456789', action: 'revoked', record_payload: { user_id: '123456789', state: 'revoked', version: 3 } });
+    assert.strictEqual((await service.banFromAlert({ guildId: 'guild-a', userId: '123456789', moderatorId: '987654321' })).outcome, 'not_listed');
+  });
+
   suite.test('client uses bearer auth and bounded query parameters', async () => {
     const requests = [];
     const client = new CloudflareGlobalBanClient({ baseUrl: 'https://bans.example', token: 'secret', fetchImpl: async (url, options) => { requests.push({ url, options }); return new Response(JSON.stringify({ records: [], snapshotCursor: 0, hasMore: false }), { status: 200, headers: { 'content-type': 'application/json' } }); } });
