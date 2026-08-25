@@ -1,5 +1,5 @@
 const { PermissionFlagsBits } = require('discord.js');
-const { buildHoneypotEmbed } = require('../../bot/services/honeypotBanner');
+const { buildHoneypotBanner } = require('../../bot/services/honeypotBanner');
 const { DEFAULTS } = require('../../config/defaults');
 
 /** Discord adapter for honeypot channel banners and softbans. */
@@ -34,6 +34,13 @@ class DiscordHoneypotGateway {
     }
   }
 
+  #bannerPayload(kicks) {
+    return buildHoneypotBanner({
+      kicks,
+      thumbnailUrl: this.client?.user?.displayAvatarURL?.({ extension: 'png', size: 256 }) || null,
+    });
+  }
+
   async getPermissionStatus(guildId, channelId) {
     const guild = this.#guild(guildId);
     const channel = this.#channel(guildId, channelId);
@@ -59,9 +66,9 @@ class DiscordHoneypotGateway {
     }
 
     if (banner) {
-      await banner.edit({ embeds: [buildHoneypotEmbed(kicks)] });
+      await banner.edit({ content: null, embeds: [], ...this.#bannerPayload(kicks) });
     } else {
-      banner = await channel.send({ embeds: [buildHoneypotEmbed(kicks)] });
+      banner = await channel.send(this.#bannerPayload(kicks));
       await Promise.resolve(banner.pin?.()).catch(() => {});
     }
 
@@ -73,7 +80,7 @@ class DiscordHoneypotGateway {
     if (!channel?.isTextBased?.() || !config.banner_message_id) return;
 
     const banner = await channel.messages.fetch(config.banner_message_id).catch(() => null);
-    if (banner) await banner.edit({ embeds: [buildHoneypotEmbed(config.kicks)] });
+    if (banner) await banner.edit({ content: null, embeds: [], ...this.#bannerPayload(config.kicks) });
   }
 
   async removeBanner(config) {

@@ -1,4 +1,4 @@
-const { buildHoneypotEmbed } = require('../../../src/bot/services/honeypotBanner');
+const { buildHoneypotBanner } = require('../../../src/bot/services/honeypotBanner');
 
 /** No-op gateway that keeps the demo composition root feature-complete. */
 class DemoHoneypotGateway {
@@ -10,13 +10,13 @@ class DemoHoneypotGateway {
 
   async ensureBanner({ guildId, channelId, kicks }) {
     const id = `demo-honeypot-${this.nextId++}`;
-    this.messages.set(id, { guildId, channelId, embeds: [buildHoneypotEmbed(kicks)] });
+    this.messages.set(id, { guildId, channelId, ...buildHoneypotBanner({ kicks }) });
     return { id };
   }
 
   async updateBanner(config) {
     const banner = this.messages.get(config.banner_message_id);
-    if (banner) banner.embeds = [buildHoneypotEmbed(config.kicks)];
+    if (banner) Object.assign(banner, buildHoneypotBanner({ kicks: config.kicks }));
   }
 
   async getPermissionStatus() {
@@ -38,4 +38,3 @@ class DemoHoneypotGateway {
 }
 
 module.exports = { DemoHoneypotGateway };
-
