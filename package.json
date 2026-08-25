@@ -2,12 +2,12 @@
   "name": "mochi-bot",
   "version": "1.0.0",
   "description": "Mochi - An All-Purpose Discord Bot with Invite Tracking & Real-Time Web Dashboard",
-  "main": "src/index.js",
+  "main": "src/index.ts",
   "type": "commonjs",
   "packageManager": "bun@1.3.14",
   "scripts": {
-    "start": "bun src/index.js",
-    "dev": "bun --watch src/index.js",
+    "start": "bun src/index.ts",
+    "dev": "bun --watch src/index.ts",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:restart": "pm2 restart mochi --update-env",
     "pm2:stop": "pm2 stop mochi",
@@ -15,9 +15,15 @@
     "pm2:logs": "pm2 logs mochi",
     "pm2:save": "pm2 save",
     "pm2:startup": "pm2 startup",
-    "deploy-commands": "bun src/bot/deploy.js",
-    "rebuild-projections": "bun scripts/rebuild-invite-projections.js",
-    "test": "bun test"
+    "deploy-commands": "bun src/bot/deploy.ts",
+    "rebuild-projections": "bun scripts/rebuild-invite-projections.ts",
+    "test": "bun test",
+    "typecheck": "bun run typecheck:server && bun run typecheck:tests && bun run typecheck:browser && bun run typecheck:worker",
+    "typecheck:server": "tsc -p tsconfig.server.json",
+    "typecheck:tests": "tsc -p tsconfig.tests.json",
+    "typecheck:browser": "tsc -p tsconfig.browser.json",
+    "typecheck:worker": "tsc -p cloudflare/global-bans/tsconfig.json",
+    "check": "bun run typecheck && bun test"
   },
   "keywords": [
     "discord-bot",
@@ -38,6 +44,13 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
-    "socket.io-client": "^4.8.3"
+    "@cloudflare/workers-types": "^5.20260825.1",
+    "@types/bun": "^1.4.0",
+    "@types/express": "^5.0.6",
+    "@types/express-session": "^1.19.0",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^26.3.0",
+    "socket.io-client": "^4.8.3",
+    "typescript": "^7.0.2"
   }
 }

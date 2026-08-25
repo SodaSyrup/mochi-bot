@@ -2,77 +2,55 @@ const fs = require('fs');
 const path = require('path');
 const { STOP_PROPAGATION } = require('../features/globalBans/application/globalBanService');
 
-/** Compatibility helper. Active runtime discovery is catalog-based. */
-function getFiles(dir) {
-  let files = [];
+function getFiles(dir: string): string[] {
+  let files: string[] = [];
   if (!fs.existsSync(dir)) return files;
-  const items = fs.readdirSync(dir, { withFileTypes: true });
-  for (const item of items) {
+  for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
     if (item.isDirectory()) files = files.concat(getFiles(path.join(dir, item.name)));
-    else if (item.name.endsWith('.js')) files.push(path.join(dir, item.name));
+    else if (item.name.endsWith('.js') || item.name.endsWith('.ts')) files.push(path.join(dir, item.name));
   }
   return files;
 }
 
-const CORE_EVENT_MODULES = [
-  require('./events/ready'),
-  require('./events/interactionCreate'),
-  require('./events/guildCreate'),
-  require('./events/guildDelete'),
-];
-
-function loggerFor(client, registry) {
-  return registry?.baseContext?.logger || client.services?.logger || console;
-}
-
-function guildIdFromDiscordArguments(args) {
-  for (const value of args) {
-    if (!value || typeof value !== 'object') continue;
-    if (value.guildId) return value.guildId;
-    if (value.guild?.id) return value.guild.id;
-  }
+const CORE_EVENT_MODULES = [require('./events/ready'), require('./events/interactionCreate'), require('./events/guildCreate'), require('./events/guildDelete')];
+function loggerFor(client: any, registry: any): any { return registry?.baseContext?.logger || client.services?.logger || console; }
+function guildIdFromDiscordArguments(args: any[]): string | null {
+  for (const value of args) { if (!value || typeof value !== 'object') continue; if (value.guildId) return value.guildId; if (value.guild?.id) return value.guild.id; }
   return null;
 }
 
-function attachEvent(client, event, logger, pluginId = 'core') {
-  const listener = (...args) => {
+function attachEvent(client: any, event: any, logger: any, pluginId = 'core') {
+  const listener = (...args: any[]) => {
     const run = async () => {
       const guildId = guildIdFromDiscordArguments(args);
       const pluginSettings = client.services?.pluginSettings;
       if (pluginId !== 'core' && guildId && pluginSettings && !pluginSettings.isEnabled(guildId, pluginId)) return;
       await event.execute(...args, client);
     };
-    run().catch((error) => logger.error?.('bot', event.name, 'Event handler failed', { pluginId, error }));
+    run().catch((error: unknown) => logger.error?.('bot', event.name, 'Event handler failed', { pluginId, error }));
   };
-  if (event.once) client.once(event.name, listener);
-  else client.on(event.name, listener);
+  if (event.once) client.once(event.name, listener); else client.on(event.name, listener);
   return { eventName: event.name, listener, pluginId };
 }
 
-function attachCoreBotEvents(client, registry = null) {
-  const logger = loggerFor(client, registry);
-  return CORE_EVENT_MODULES.map((event) => attachEvent(client, event, logger));
-}
+function attachCoreBotEvents(client: any, registry: any = null) { const logger = loggerFor(client, registry); return CORE_EVENT_MODULES.map((event) => attachEvent(client, event, logger)); }
 
-function attachBotContributions(client, contributionRegistry) {
+function attachBotContributions(client: any, contributionRegistry: any) {
   if (!contributionRegistry) throw new Error('A contribution registry is required to attach plugin bot contributions.');
   const logger = loggerFor(client, contributionRegistry);
   contributionRegistry.syncCommands(client);
-  const bindings = [];
-  const contributions = contributionRegistry.getDiscordEventContributions();
-  const grouped = new Map();
-  for (const contribution of contributions) {
+  const bindings: any[] = [];
+  const grouped = new Map<string, any[]>();
+  for (const contribution of contributionRegistry.getDiscordEventContributions()) {
     const list = grouped.get(contribution.handler.name) || [];
-    list.push(contribution);
-    grouped.set(contribution.handler.name, list);
+    list.push(contribution); grouped.set(contribution.handler.name, list);
   }
   for (const [eventName, entries] of grouped) {
-    const ordered = entries.slice().sort((a, b) => {
-      const phaseOrder = { guard: 0, normal: 1, cleanup: 2 };
-      return (phaseOrder[a.metadata?.phase] - phaseOrder[b.metadata?.phase]) ||
-        ((a.metadata?.priority || 0) - (b.metadata?.priority || 0));
+    const ordered = entries.slice().sort((a: any, b: any) => {
+      const phaseOrder: Record<string, number> = { guard: 0, normal: 1, cleanup: 2 };
+      return (phaseOrder[a.metadata?.phase] - phaseOrder[b.metadata?.phase]) || ((a.metadata?.priority || 0) - (b.metadata?.priority || 0));
     });
-    const listener = (...args) => {
+    const listener = (...args: any[]) => {
       const run = async () => {
         let stopped = false;
         for (const entry of ordered) {
@@ -84,7 +62,7 @@ function attachBotContributions(client, contributionRegistry) {
           if (result === STOP_PROPAGATION || result?.stopPropagation === true || result?.[STOP_PROPAGATION]) stopped = true;
         }
       };
-      run().catch((error) => logger.error?.('bot', eventName, 'Event handler failed', { error }));
+      run().catch((error: unknown) => logger.error?.('bot', eventName, 'Event handler failed', { error }));
     };
     client.on(eventName, listener);
     bindings.push({ eventName, listener, pluginId: 'dispatcher' });
@@ -93,16 +71,9 @@ function attachBotContributions(client, contributionRegistry) {
   return bindings;
 }
 
-function detachBotContributions(client, bindings = []) {
-  for (const binding of bindings) client.off?.(binding.eventName, binding.listener);
-}
+function detachBotContributions(client: any, bindings: any[] = []) { for (const binding of bindings) client.off?.(binding.eventName, binding.listener); }
 
-/**
- * Core coordination events are explicit; feature events and commands must be
- * registered by the built-in catalog. The no-registry path is a compatibility
- * convenience for older embedders and still uses only the explicit catalog.
- */
-function loadBot(client, contributionRegistry = null) {
+function loadBot(client: any, contributionRegistry: any = null) {
   let registry = contributionRegistry;
   if (!registry) {
     const config = require('../config');
@@ -122,7 +93,7 @@ function loadBot(client, contributionRegistry = null) {
   return client.mochiBotBindings;
 }
 
-function detachBot(client) {
+function detachBot(client: any) {
   const bindings = client?.mochiBotBindings;
   if (!bindings) return;
   detachBotContributions(client, [...bindings.coreBindings, ...bindings.pluginBindings]);
@@ -130,11 +101,5 @@ function detachBot(client) {
   client.pluginContributions = null;
 }
 
-module.exports = {
-  loadBot,
-  getFiles,
-  attachBotContributions,
-  detachBotContributions,
-  attachCoreBotEvents,
-  detachBot,
-};
+module.exports = { loadBot, getFiles, attachBotContributions, detachBotContributions, attachCoreBotEvents, detachBot };
+

@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun", "node"]
+  },
+  "include": [
+    "tests/**/*.ts",
+    "tests/**/*.js",
+    "src/**/*.ts",
+    "src/**/*.js"
+  ],
+  "exclude": [
+    "src/dashboard/public/**",
+    "cloudflare/**",
+    "node_modules/**",
+    "data/**",
+    "logs/**"
+  ]
+}
