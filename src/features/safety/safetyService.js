@@ -8,10 +8,7 @@ const {
   AUTO_MOD_LIMITS,
 } = require('../../platform/discord/autoModConstants');
 
-/**
- * Safety feature service. Delegates Discord/AutoMod operations to the safety
- * gateway and publishes canonical automod events. Routes stay thin.
- */
+/** Coordinates AutoMod operations and publishes application events. */
 class SafetyService {
   constructor({ safetyGateway, eventBus, logger }) {
     this.gateway = safetyGateway;
@@ -48,12 +45,8 @@ class SafetyService {
       this.#validateRulePayload(payload);
       const rule = await this.gateway.createAutoModRule(guildId, payload);
       if (!rule) throw new NotFoundError('Guild is not available.');
-      // Option A (dedup model): Discord gateway AutoModerationRule* events are
-      // the authoritative realtime notification. The service performs the
-      // Discord mutation but does NOT publish AutoModRuleUpdated here — the
-      // resulting Discord event (external or dashboard-initiated) publishes the
-      // one canonical event. This guarantees one logical change yields one
-      // dashboard event instead of service + Discord echo duplicates.
+      // Discord emits the rule event after the mutation; publishing here would
+      // send a duplicate notification.
       return rule;
     } catch (err) {
       if (err instanceof AppError) throw err;

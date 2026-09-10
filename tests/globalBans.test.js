@@ -88,6 +88,39 @@ async function runGlobalBanTests() {
     assert.strictEqual(called, false);
   });
 
+  suite.test('expired exemptions are ignored and deleting one requeues enforcement', () => {
+    const repository = makeRepository();
+    repository.applyEvent(activeEvent());
+    repository.setGuildSettings('guild-a', { mode: 'enforce' });
+    repository.setExemption('guild-a', '123456789', { reason: 'Temporary', expiresAt: new Date(Date.now() - 1000).toISOString() });
+    assert.strictEqual(repository.getExemption('guild-a', '123456789'), null);
+    repository.enqueue({ guildId: 'guild-a', userId: '123456789', sourceEventId: 1, action: 'ban' });
+    const job = repository.claimDueJobs(1)[0];
+    assert.ok(job.lease_token);
+    assert.strictEqual(repository.completeJob(job, { outcome: 'skipped' }), true);
+    repository.deleteExemption('guild-a', '123456789');
+    repository.enqueueForGuild('guild-a', 0, { force: true });
+    assert.strictEqual(repository.getJobStats('guild-a').find((row) => row.status === 'pending').count, 1);
+  });
+
+  suite.test('expired running jobs are recovered with a retryable lease', () => {
+    const repository = makeRepository();
+    repository.enqueue({ guildId: 'guild-a', userId: '123456789', sourceEventId: 1, action: 'ban' });
+    const claimed = repository.claimDueJobs(1, { leaseSeconds: 1 })[0];
+    repository.db.prepare("UPDATE global_ban_enforcement_jobs SET lease_expires_at = datetime('now', '-1 second') WHERE id = ?").run(claimed.id);
+    repository.recoverExpiredJobs();
+    assert.strictEqual(repository.db.prepare('SELECT status, last_error_code FROM global_ban_enforcement_jobs WHERE id = ?').get(claimed.id).status, 'failed');
+    assert.strictEqual(repository.claimDueJobs(1).length, 1);
+  });
+
+  suite.test('terminal retry exhaustion remains visible as dead', () => {
+    const repository = makeRepository();
+    repository.enqueue({ guildId: 'guild-a', userId: '123456789', sourceEventId: 1, action: 'ban' });
+    const job = repository.claimDueJobs(1)[0];
+    repository.completeJob(job, { outcome: 'guild_unavailable', terminal: true });
+    assert.strictEqual(repository.getJobStats('guild-a').find((row) => row.status === 'dead').count, 1);
+  });
+
   suite.test('alert mode sends a join alert with the member identity and does not ban automatically', async () => {
     const repository = makeRepository();
     repository.applyEvent(activeEvent());

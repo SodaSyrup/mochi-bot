@@ -1,16 +1,6 @@
 const { InviteEvents, SafetyEvents, HoneypotEvents, GlobalBanEvents } = require('../../app/eventBus');
 
-/**
- * Realtime transport DTO mappers.
- *
- * The Socket.IO gateway forwards CANONICAL application events to authorized
- * guild rooms. These mappers are the single documented translation between an
- * application event and the transport payload a frontend client receives.
- *
- * Each mapper whitelists exactly the fields a guild client needs — never raw
- * Error objects, Discord.js entities, DB rows, or session/OAuth material.
- * Payloads are plain JSON-safe objects.
- */
+/** Maps application events to the JSON-safe payloads sent over Socket.IO. */
 
 function pickMember(member) {
   if (!member) return null;
@@ -155,10 +145,7 @@ function mapGlobalBanEvent(event) {
   };
 }
 
-/**
- * Map of canonical application event -> transport mapper.
- * Only events listed here are ever forwarded to clients.
- */
+/** Application events that are forwarded to clients. */
 const EVENT_MAPPERS = Object.freeze({
   [InviteEvents.MemberJoined]: mapMemberEvent,
   [InviteEvents.MemberLeft]: mapMemberEvent,

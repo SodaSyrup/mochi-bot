@@ -12,20 +12,19 @@ async function bootstrap() {
   console.log('═══════════════════════════════════════════════════════════');
 
   application = await createApplication({ config, client });
-  const { services, dashboard, logger, pluginManager } = application;
+  const { services, dashboard, logger, pluginManager, jobManager } = application;
 
-  // Discord event handlers and commands resolve their dependencies through the
-  // client reference set here. Handlers are thin adapters only.
+  // Event handlers and commands resolve their dependencies through this client reference.
   client.services = services;
 
-  loadBot(client, application.contributions);
+  await loadBot(client, application.contributions);
 
   await pluginManager.startAll();
+  await jobManager.start({ client, services, config });
 
   await dashboard.start(config.dashboard.port);
 
-  // Connect to Discord when credentials exist. Production MUST connect — a
-  // failure there is fatal.
+  // Connect to Discord when credentials exist; production treats login failure as fatal.
   if (config.bot.token) {
     try {
       logger.info('bot', 'login', 'Connecting to Discord Gateway...');
@@ -56,6 +55,7 @@ async function shutdown(signal) {
   };
 
   await attempt('plugins', async () => {
+    await application?.jobManager?.stop?.({ client, services: application?.services, config });
     const errors = await application?.pluginManager?.stopAll?.();
     if (errors?.length) failures.push(...errors.map((entry) => ({ label: `plugin:${entry.pluginId}`, error: entry.error })));
   });

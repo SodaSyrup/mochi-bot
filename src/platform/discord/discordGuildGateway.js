@@ -1,9 +1,6 @@
 const { ChannelType, PermissionFlagsBits } = require('discord.js');
 
-/**
- * Feature-oriented gateway for guild-level reads (listing, channels, roles).
- * Translates Discord.js guild objects into plain DTOs.
- */
+/** Converts Discord guild data into dashboard DTOs. */
 class DiscordGuildGateway {
   constructor({ client, logger }) {
     this.client = client;

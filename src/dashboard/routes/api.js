@@ -10,8 +10,7 @@ const { createHoneypotRoutes } = require('./honeypotRoutes');
 const { createPluginRoutes } = require('./pluginRoutes');
 const { requireGuildPlugin } = require('../auth/requireGuildPlugin');
 const { PluginRegistrationError } = require('../../plugins/core/errors');
-const { requireGlobalBanAdmin } = require('../auth/requireGlobalBanAdmin');
-const { createGlobalBanRegistryRoutes } = require('./globalBanRegistryRoutes');
+const { requireCapability } = require('../auth/requireCapability');
 
 /**
  * Aggregator router. Mounts feature routers; applies authentication and per-
@@ -21,8 +20,12 @@ const { createGlobalBanRegistryRoutes } = require('./globalBanRegistryRoutes');
  *  /guilds                   -> authenticated, only manageable guilds
  *  /guilds/:guildId/**       -> authenticated + manageable by the session user
  */
-function createApiRouter({ client, config, services, contributions = null }) {
+function createApiRouter({ client, config, services, contributions = null, capabilities = null }) {
   const router = express.Router();
+
+  // The dashboard shell consumes this manifest instead of maintaining a
+  // second host-side list of plugin pages and assets.
+  router.get('/ui-manifest', (_req, res) => res.json(contributions?.getDashboardManifest?.() || { pages: [], assets: [] }));
 
   router.use(createStatsRouter({ client, guildGateway: services.guildGateway, config }));
 
@@ -30,14 +33,6 @@ function createApiRouter({ client, config, services, contributions = null }) {
     guildService: services.guilds,
     guildAccess: services.guildAccess,
     inviteService: services.invites,
-  }));
-
-  router.use('/global-ban-registry', requireAuth, requireGlobalBanAdmin(config), createGlobalBanRegistryRoutes({
-    adminClient: services.globalBanAdminClient,
-    config,
-    guildAccess: services.guildAccess,
-    recommendationService: services.globalBanRecommendations,
-    userResolver: services.inviteGateway,
   }));
 
   const guildScoped = [requireAuth, requireGuildAccess(services.guildAccess, { access: 'manage' })];
@@ -63,14 +58,19 @@ function createApiRouter({ client, config, services, contributions = null }) {
           cause: error,
         });
       }
-      const middleware = contribution.scope === 'public'
+      const access = contribution.access;
+      const middleware = access?.kind === 'public' || contribution.scope === 'public'
         ? []
-        : contribution.scope === 'auth'
+        : access?.kind === 'authenticated' || contribution.scope === 'auth'
           ? [requireAuth]
-          : [
-            ...guildScoped,
-            requireGuildPlugin(services.pluginSettings, contribution.pluginId),
-          ];
+          : access?.kind === 'capability'
+            ? [requireAuth, requireCapability(access.capability, capabilities)]
+            : [
+              ...guildScoped,
+              ...(access?.kind === 'guild' && access.requirePluginEnabled === false
+                ? []
+                : [requireGuildPlugin(services.pluginSettings, contribution.pluginId)]),
+            ];
       router.use(contribution.mountPath, ...middleware, target);
     }
   } else {

@@ -9,7 +9,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addStringOption(option =>
       option.setName('code')
-        .setDescription('The invite code (e.g. mochi-vibes or full link discord.gg/...)')
+        .setDescription('The invite code. Example: mochi-vibes or a full discord.gg link.')
         .setRequired(true)
     )
     .addStringOption(option =>

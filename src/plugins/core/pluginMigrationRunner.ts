@@ -25,7 +25,11 @@ export function runPluginMigrations(db: any, plugins: MochiPlugin[], { logger = 
     for (const migration of pending) {
       try {
         const tx = db.transaction(() => {
-          migration.up(db);
+          const result = migration.up(db);
+          if (result && typeof (result as any).then === 'function') {
+            (result as Promise<unknown>).catch(() => {});
+            throw new PluginLifecycleError(`Plugin migration ${migration.version} (${migration.name}) must complete synchronously.`, { pluginId: plugin.manifest.id });
+          }
           db.prepare('INSERT INTO plugin_schema_migrations (plugin_id, version, name) VALUES (?, ?, ?)').run(plugin.manifest.id, migration.version, migration.name);
         });
         tx();

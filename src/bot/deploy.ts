@@ -1,21 +1,21 @@
 const { REST, Routes } = require('discord.js');
 const config = require('../config');
-const catalog = require('../plugins/catalog');
+const { discoverPluginCatalog } = require('../plugins/core/pluginLoader');
 const { ContributionRegistry } = require('../plugins/core/contributionRegistry');
 const { PluginManager } = require('../plugins/core/pluginManager');
 const { toDeployableCommandData } = require('./commandPolicy');
 
-function collectPluginCommands(): { manager: any; commands: any[] } {
+async function collectPluginCommands(): Promise<{ manager: any; commands: any[] }> {
   const services: Record<string, unknown> = {};
   const contributions = new ContributionRegistry({ baseServices: services, serviceTarget: services });
   const manager = new PluginManager({
-    plugins: catalog,
+    plugins: discoverPluginCatalog({ configuredPaths: config.plugins?.paths || [] }),
     config,
     logger: console,
     baseContext: { client: null, services },
     contributions,
   });
-  manager.registerAll();
+  await manager.registerAll();
   return {
     manager,
     commands: contributions.getCommandContributions().map(({ command }: { command: any }) => command),
@@ -23,7 +23,7 @@ function collectPluginCommands(): { manager: any; commands: any[] } {
 }
 
 async function deployCommands(): Promise<void> {
-  const { commands: pluginCommands } = collectPluginCommands();
+  const { commands: pluginCommands } = await collectPluginCommands();
   if (!config.bot.token || !config.bot.clientId) {
     console.error('[Deploy] Cannot deploy commands: DISCORD_TOKEN and CLIENT_ID are required in .env');
     return;
@@ -50,4 +50,3 @@ if (require.main === module) {
 
 module.exports = deployCommands;
 module.exports.collectPluginCommands = collectPluginCommands;
-

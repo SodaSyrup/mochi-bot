@@ -87,8 +87,29 @@ function decodeCursor(value) {
 }
 
 function expectedVersion(payload, current) {
-  const expected = Number(payload?.expectedVersion || current.version);
+  const expected = Number(payload?.expectedVersion);
   return Number.isInteger(expected) && expected > 0 ? expected : null;
+}
+
+function stableValue(value) {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (value && typeof value === 'object') return Object.keys(value).sort().reduce((result, key) => {
+    result[key] = stableValue(value[key]);
+    return result;
+  }, {});
+  return value;
+}
+
+function mutationFingerprint({ action, actorId, userId, payload }) {
+  return JSON.stringify(stableValue({ action, actorId: actorId || null, userId, payload: payload || {} }));
+}
+
+async function replayEvent(env, idempotencyKey, fingerprint = null) {
+  if (!idempotencyKey) return null;
+  const existing = await env.DB.prepare('SELECT * FROM global_ban_events WHERE idempotency_key = ?').bind(idempotencyKey).first();
+  if (!existing) return null;
+  if (fingerprint && existing.request_fingerprint && existing.request_fingerprint !== fingerprint) return errorResponse('IDEMPOTENCY_CONFLICT', 'Idempotency-Key was already used for a different operation.', 409);
+  return json({ success: true, eventId: existing.event_id, record: JSON.parse(existing.record_payload), replayed: true });
 }
 
 function validateMutation(current, payload, allowedStates) {
@@ -104,23 +125,40 @@ async function audit(env, request, operation, actorId, targetUserId, result) {
     .bind(requestId(request), actorId || null, operation, targetUserId || null, result).run();
 }
 
-async function eventMutation(env, request, { userId, action, actorId, idempotencyKey, updateSql, updateArgs, nextRow, guardVersion = null }) {
+async function eventMutation(env, request, { userId, action, actorId, idempotencyKey, updateSql, updateArgs, nextRow, fingerprintPayload = null }) {
   if (!idempotencyKey) return errorResponse('IDEMPOTENCY_REQUIRED', 'Idempotency-Key is required.', 400);
-  const existingEvent = await env.DB.prepare('SELECT * FROM global_ban_events WHERE idempotency_key = ?').bind(idempotencyKey).first();
-  if (existingEvent) return json({ success: true, eventId: existingEvent.event_id, record: JSON.parse(existingEvent.record_payload), replayed: true });
+  const fingerprint = mutationFingerprint({ action, actorId, userId, payload: fingerprintPayload });
+  const replay = await replayEvent(env, idempotencyKey, fingerprint);
+  if (replay) return replay;
   const eventUuid = crypto.randomUUID();
+  const mutationToken = crypto.randomUUID();
   const payload = rowPayload(nextRow);
-  const eventStatement = guardVersion === null
-    ? env.DB.prepare(`INSERT INTO global_ban_events (event_uuid, idempotency_key, user_id, action, actor_id, record_version, record_payload) VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(eventUuid, idempotencyKey, userId, action, actorId, Number(nextRow.version), JSON.stringify(payload))
-    : env.DB.prepare(`INSERT INTO global_ban_events (event_uuid, idempotency_key, user_id, action, actor_id, record_version, record_payload)
-        SELECT ?, ?, ?, ?, ?, ?, ? FROM global_bans WHERE user_id = ? AND version = ?`).bind(eventUuid, idempotencyKey, userId, action, actorId, Number(nextRow.version), JSON.stringify(payload), userId, guardVersion + 1);
-  const result = await env.DB.batch([
-    env.DB.prepare(updateSql).bind(...updateArgs),
-    eventStatement,
-    env.DB.prepare(`INSERT INTO api_audit_log (request_id, actor_id, operation, target_user_id, result) VALUES (?, ?, ?, ?, ?)`)
-      .bind(requestId(request), actorId, action, userId, 'success'),
-  ]);
-  if (guardVersion !== null && !(result?.[1]?.meta?.changes > 0)) return errorResponse('VERSION_CONFLICT', 'The registry entry changed; reload it before editing.', 409);
+  const resolvedArgs = typeof updateArgs === 'function' ? updateArgs(mutationToken) : updateArgs;
+  const eventStatement = env.DB.prepare(`INSERT INTO global_ban_events
+    (event_uuid, idempotency_key, user_id, action, actor_id, record_version, record_payload, request_fingerprint)
+    SELECT ?, ?, user_id, ?, ?, version, ?, ? FROM global_bans
+    WHERE user_id = ? AND last_mutation_token = ?`)
+    .bind(eventUuid, idempotencyKey, action, actorId, JSON.stringify(payload), fingerprint, userId, mutationToken);
+  const auditStatement = env.DB.prepare(`INSERT INTO api_audit_log (request_id, actor_id, operation, target_user_id, result)
+    SELECT ?, ?, ?, user_id, 'success' FROM global_bans WHERE user_id = ? AND last_mutation_token = ?`)
+    .bind(requestId(request), actorId, action, userId, mutationToken);
+  let result;
+  try {
+    result = await env.DB.batch([
+      env.DB.prepare(updateSql).bind(...resolvedArgs),
+      eventStatement,
+      auditStatement,
+    ]);
+  } catch (error) {
+    // A concurrent request with the same idempotency key may have committed
+    // first and caused a uniqueness error in this transaction. Replay only
+    // after verifying the stored fingerprint; unrelated database failures
+    // still surface as errors.
+    const replay = await replayEvent(env, idempotencyKey, fingerprint);
+    if (replay) return replay;
+    throw error;
+  }
+  if (!(result?.[0]?.meta?.changes > 0) || !(result?.[1]?.meta?.changes > 0)) return errorResponse('VERSION_CONFLICT', 'The registry entry changed; reload it before editing.', 409);
   const eventId = result?.[1]?.meta?.last_row_id || null;
   return json({ success: true, eventId, record: payload });
 }
@@ -155,6 +193,17 @@ async function handleAdmin(request, env, url) {
   const parts = url.pathname.split('/').filter(Boolean);
   const userId = parts[3] || '';
   const payload = await body(request);
+  // Replay a completed mutation before state-transition validation. A client
+  // retry after losing the response must receive the original result even
+  // though the record is no longer in its pre-mutation state.
+  if (['POST', 'PATCH'].includes(request.method)) {
+    const idempotencyKey = request.headers.get('idempotency-key');
+    if (!idempotencyKey || !idempotencyKey.trim() || idempotencyKey.length > 200 || /[\r\n]/.test(idempotencyKey)) return errorResponse('IDEMPOTENCY_REQUIRED', 'Idempotency-Key must be a non-empty value of at most 200 characters.', 400);
+    const action = request.method === 'PATCH' ? 'updated' : (url.pathname.endsWith('/activate') ? 'activated' : url.pathname.endsWith('/reject') ? 'rejected' : url.pathname.endsWith('/revoke') ? 'revoked' : url.pathname.endsWith('/reopen') ? 'reopened' : 'proposed');
+    const targetUserId = userId || String(payload?.userId || payload?.user_id || '');
+    const replay = await replayEvent(env, idempotencyKey, mutationFingerprint({ action, actorId, userId: targetUserId, payload }));
+    if (replay) return replay;
+  }
   if (request.method === 'GET' && url.pathname === '/v1/admin/summary') {
     const rows = await env.DB.prepare('SELECT state, COUNT(*) AS count FROM global_bans GROUP BY state').all();
     const counts = Object.fromEntries((rows.results || []).map((row) => [row.state, Number(row.count || 0)]));
@@ -204,7 +253,7 @@ async function handleAdmin(request, env, url) {
     const existing = await env.DB.prepare('SELECT * FROM global_bans WHERE user_id = ?').bind(id).first();
     if (existing) return errorResponse('CONFLICT', 'A registry entry already exists for this user. Reopen or edit the existing entry.', 409);
     const row = { user_id: id, state: 'pending', severity: payload.severity || null, reason_code: String(payload.reasonCode).slice(0, 80), public_reason: String(payload.publicReason).slice(0, 500), activated_at: null, expires_at: payload.expiresAt || null, version: 1 };
-    return eventMutation(env, request, { userId: id, action: 'proposed', actorId, idempotencyKey: request.headers.get('idempotency-key'), updateSql: `INSERT INTO global_bans (user_id, state, severity, reason_code, public_reason, evidence_reference, created_by, expires_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, updateArgs: [id, row.state, row.severity, row.reason_code, row.public_reason, payload.evidenceReference || null, actorId, row.expires_at, 1], nextRow: row });
+    return eventMutation(env, request, { userId: id, action: 'proposed', actorId, idempotencyKey: request.headers.get('idempotency-key'), updateSql: `INSERT INTO global_bans (user_id, state, severity, reason_code, public_reason, evidence_reference, created_by, expires_at, version, last_mutation_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, updateArgs: (token) => [id, row.state, row.severity, row.reason_code, row.public_reason, payload.evidenceReference || null, actorId, row.expires_at, 1, token], nextRow: row, fingerprintPayload: payload });
   }
   if (!USER_ID.test(userId)) return errorResponse('INVALID_USER_ID', 'A valid Discord user ID is required.');
   const current = await env.DB.prepare('SELECT * FROM global_bans WHERE user_id = ?').bind(userId).first();
@@ -213,25 +262,25 @@ async function handleAdmin(request, env, url) {
     const invalid = validateMutation(current, payload, ['pending']);
     if (invalid) return invalid;
     const next = { ...current, state: 'active', activated_at: current.activated_at || new Date().toISOString(), version: current.version + 1 };
-    return eventMutation(env, request, { userId, action: 'activated', actorId, idempotencyKey: request.headers.get('idempotency-key'), updateSql: `UPDATE global_bans SET state = 'active', reviewed_by = ?, activated_at = COALESCE(activated_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE user_id = ? AND version = ?`, updateArgs: [actorId, userId, current.version], guardVersion: current.version, nextRow: next });
+    return eventMutation(env, request, { userId, action: 'activated', actorId, idempotencyKey: request.headers.get('idempotency-key'), updateSql: `UPDATE global_bans SET state = 'active', reviewed_by = ?, activated_at = COALESCE(activated_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP, version = version + 1, last_mutation_token = ? WHERE user_id = ? AND version = ?`, updateArgs: (token) => [actorId, token, userId, current.version], nextRow: next, fingerprintPayload: payload });
   }
   if (request.method === 'POST' && url.pathname.endsWith('/reject')) {
     const invalid = validateMutation(current, payload, ['pending']);
     if (invalid) return invalid;
     const next = { ...current, state: 'rejected', version: current.version + 1 };
-    return eventMutation(env, request, { userId, action: 'rejected', actorId, idempotencyKey: request.headers.get('idempotency-key'), updateSql: `UPDATE global_bans SET state = 'rejected', reviewed_by = ?, updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE user_id = ? AND version = ?`, updateArgs: [actorId, userId, current.version], guardVersion: current.version, nextRow: next });
+    return eventMutation(env, request, { userId, action: 'rejected', actorId, idempotencyKey: request.headers.get('idempotency-key'), updateSql: `UPDATE global_bans SET state = 'rejected', reviewed_by = ?, updated_at = CURRENT_TIMESTAMP, version = version + 1, last_mutation_token = ? WHERE user_id = ? AND version = ?`, updateArgs: (token) => [actorId, token, userId, current.version], nextRow: next, fingerprintPayload: payload });
   }
   if (request.method === 'POST' && url.pathname.endsWith('/revoke')) {
     const invalid = validateMutation(current, payload, ['active']);
     if (invalid) return invalid;
     const next = { ...current, state: 'revoked', version: current.version + 1 };
-    return eventMutation(env, request, { userId, action: 'revoked', actorId, idempotencyKey: request.headers.get('idempotency-key'), updateSql: `UPDATE global_bans SET state = 'revoked', revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE user_id = ? AND version = ?`, updateArgs: [userId, current.version], guardVersion: current.version, nextRow: next });
+    return eventMutation(env, request, { userId, action: 'revoked', actorId, idempotencyKey: request.headers.get('idempotency-key'), updateSql: `UPDATE global_bans SET state = 'revoked', revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, version = version + 1, last_mutation_token = ? WHERE user_id = ? AND version = ?`, updateArgs: (token) => [token, userId, current.version], nextRow: next, fingerprintPayload: payload });
   }
   if (request.method === 'POST' && url.pathname.endsWith('/reopen')) {
     const invalid = validateMutation(current, payload, ['revoked', 'rejected', 'expired']);
     if (invalid) return invalid;
     const next = { ...current, state: 'pending', version: current.version + 1 };
-    return eventMutation(env, request, { userId, action: 'reopened', actorId, idempotencyKey: request.headers.get('idempotency-key'), updateSql: `UPDATE global_bans SET state = 'pending', reviewed_by = NULL, revoked_at = NULL, updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE user_id = ? AND version = ?`, updateArgs: [userId, current.version], guardVersion: current.version, nextRow: next });
+    return eventMutation(env, request, { userId, action: 'reopened', actorId, idempotencyKey: request.headers.get('idempotency-key'), updateSql: `UPDATE global_bans SET state = 'pending', reviewed_by = NULL, revoked_at = NULL, updated_at = CURRENT_TIMESTAMP, version = version + 1, last_mutation_token = ? WHERE user_id = ? AND version = ?`, updateArgs: (token) => [token, userId, current.version], nextRow: next, fingerprintPayload: payload });
   }
   if (request.method === 'PATCH') {
     const invalid = validateMutation(current, payload, ['pending', 'active', 'revoked', 'expired', 'rejected']);
@@ -240,7 +289,7 @@ async function handleAdmin(request, env, url) {
     const reasonCode = payload?.reasonCode === undefined ? current.reason_code : String(payload.reasonCode).trim();
     if (publicReason.length < 3 || publicReason.length > 500 || !reasonCode || reasonCode.length > 80) return errorResponse('INVALID_RECORD', 'reasonCode and publicReason are invalid.');
     const next = { ...current, public_reason: publicReason, reason_code: reasonCode, expires_at: payload?.expiresAt === undefined ? current.expires_at : (payload.expiresAt || null), version: current.version + 1 };
-    return eventMutation(env, request, { userId, action: 'updated', actorId, idempotencyKey: request.headers.get('idempotency-key'), updateSql: `UPDATE global_bans SET reason_code = ?, public_reason = ?, expires_at = ?, updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE user_id = ? AND version = ?`, updateArgs: [reasonCode, publicReason, next.expires_at, userId, current.version], guardVersion: current.version, nextRow: next });
+    return eventMutation(env, request, { userId, action: 'updated', actorId, idempotencyKey: request.headers.get('idempotency-key'), updateSql: `UPDATE global_bans SET reason_code = ?, public_reason = ?, expires_at = ?, updated_at = CURRENT_TIMESTAMP, version = version + 1, last_mutation_token = ? WHERE user_id = ? AND version = ?`, updateArgs: (token) => [reasonCode, publicReason, next.expires_at, token, userId, current.version], nextRow: next, fingerprintPayload: payload });
   }
   if (request.method === 'GET') return json({ success: true, record: adminRowPayload(current) });
   return errorResponse('NOT_FOUND', 'Administrative operation not found.', 404);

@@ -20,7 +20,7 @@ function normalizeKicks(kicks) {
  * Build the persistent honeypot banner using Discord Components V2.
  *
  * Components V2 messages cannot contain content or embeds, so this function
- * returns the complete message payload rather than just a visual component.
+ * returns the complete message payload instead of only a visual component.
  */
 function buildHoneypotBanner({ kicks = 0, thumbnailUrl = null } = {}) {
   const count = normalizeKicks(kicks);

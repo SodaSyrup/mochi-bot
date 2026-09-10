@@ -10,6 +10,12 @@ const migration = { version: 1, name: 'global-ban-cache-and-enforcement', up(db:
       CREATE INDEX IF NOT EXISTS idx_global_ban_jobs_due ON global_ban_enforcement_jobs (status, next_attempt_at);
       CREATE TABLE IF NOT EXISTS global_ban_enforcement_events (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id INTEGER, guild_id TEXT NOT NULL, user_id TEXT NOT NULL, source_event_id INTEGER NOT NULL DEFAULT 0, action TEXT NOT NULL, outcome TEXT NOT NULL, details_code TEXT, occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     `); } };
+const leaseMigration = { version: 2, name: 'global-ban-job-leases', up(db: any) {
+  const columns = new Set(db.prepare('PRAGMA table_info(global_ban_enforcement_jobs)').all().map((row: any) => row.name));
+  if (!columns.has('lease_token')) db.exec('ALTER TABLE global_ban_enforcement_jobs ADD COLUMN lease_token TEXT');
+  if (!columns.has('lease_expires_at')) db.exec('ALTER TABLE global_ban_enforcement_jobs ADD COLUMN lease_expires_at TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_global_ban_jobs_lease ON global_ban_enforcement_jobs (status, lease_expires_at)');
+} };
 
 const { interactionHandler } = require('./interactionHandler');
 const memberGuard = { name: 'guildMemberAdd', async execute(member: any, client: any) { const service = client.services?.globalBans; if (!service || member?.user?.bot) return null; return service.evaluateMember(member); } };
@@ -19,11 +25,18 @@ const guildDelete = { name: 'guildDelete', async execute(guild: any, client: any
 
 module.exports = {
   manifest: { id: 'global-bans', name: 'Global Protection', version: '1.0.0', apiVersion: 1, description: 'Synchronizes a centrally managed ban registry with opted-in guilds.', requires: [] },
-  migrations: [migration],
+  migrations: [migration, leaseMigration],
   async start(context: any) { await context.baseServices.globalBans?.start(); },
   async stop(context: any) { await context.baseServices.globalBans?.stop(); },
   register(context: any) {
     const services = context.baseServices;
+    context.capabilities?.register({
+      id: 'global-bans.registry.manage',
+      resolve({ user, config }: { user: any; config: any }) {
+        const id = String(user?.id || '');
+        return Boolean(config?.globalBans?.adminToken && config?.globalBans?.adminUserIds?.includes(id));
+      },
+    });
     context.services.register('globalBans', services.globalBans);
     context.services.register('globalBanRepository', services.globalBanRepository);
     context.services.register('globalBanGateway', services.globalBanGateway);
@@ -34,11 +47,25 @@ module.exports = {
     context.discordEvents.register(guildCreate, { source: 'src/plugins/builtins/global-bans/index.js', phase: 'normal', priority: -100 });
     context.discordEvents.register(guildDelete, { source: 'src/plugins/builtins/global-bans/index.js', phase: 'cleanup', runWhenGuildPluginDisabled: true });
     context.dashboardApi.register({ id: 'global-bans-api', mountPath: '/guilds/:guildId/global-bans', scope: 'guild-manage', install(router: any) { router.use(require('../../../dashboard/routes/globalBanRoutes').createGlobalBanRoutes({ globalBanService: services.globalBans, guildService: services.guilds })); } });
+    context.dashboardApi.register({
+      id: 'global-ban-registry-api',
+      mountPath: '/global-ban-registry',
+      access: { kind: 'capability', capability: 'global-bans.registry.manage' },
+      install(router: any) {
+        router.use(require('../../../dashboard/routes/globalBanRegistryRoutes').createGlobalBanRegistryRoutes({
+          adminClient: services.globalBanAdminClient,
+          config: context.config,
+          guildAccess: services.guildAccess,
+          recommendationService: services.globalBanRecommendations,
+          userResolver: services.inviteGateway,
+        }));
+      },
+    });
     context.pages.register({ id: 'global-bans', path: '/global-bans', file: 'global-bans.html' });
+    context.pages.register({ id: 'global-ban-registry', path: '/global-ban-registry', file: 'global-ban-registry.html', access: { kind: 'capability', capability: 'global-bans.registry.manage' } });
     const { GlobalBanEvents } = require('../../../app/eventBus');
     const { mapGlobalBanEvent } = require('../../../dashboard/realtime/eventMappers');
     context.realtime.register({ id: 'global-ban-enforcement', applicationEvent: GlobalBanEvents.Enforcement, socketEvent: 'globalBanEnforcement', map: mapGlobalBanEvent });
     context.realtime.register({ id: 'global-ban-settings', applicationEvent: GlobalBanEvents.SettingsUpdated, socketEvent: 'globalBanSettingsUpdated', map: mapGlobalBanEvent });
   },
 };
-

@@ -61,7 +61,7 @@ class SafetyPage {
     if (!safety) return;
 
     const verLevels = ['None', 'Low', 'Medium', 'High', 'Highest'];
-    const explicitLevels = ["Don't scan", 'Members without roles', 'All members'];
+    const explicitLevels = ['Do not scan', 'Members without roles', 'All members'];
 
     const totalEl = document.getElementById('stat-total-rules');
     if (totalEl) totalEl.textContent = safety.rulesCount ?? 0;

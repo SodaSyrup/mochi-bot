@@ -2,7 +2,7 @@
 
 ## AutoMod and server safety
 
-The dashboard can view and configure Discord AutoMod rules and server safety settings, including:
+The dashboard can view and configure Discord AutoMod rules and server safety settings. It supports:
 
 - Keyword filters
 - Mention-spam protection
@@ -10,11 +10,15 @@ The dashboard can view and configure Discord AutoMod rules and server safety set
 - Member profiles
 - Server verification levels
 
-AutoMod execution and rule changes are also exposed through the authenticated realtime event feed. See the [realtime contract](../architecture.md#realtime-transport-contract) for payload shapes.
+The authenticated real-time event feed also reports AutoMod actions and rule
+changes. See the [real-time contract](../architecture.md#realtime-transport-contract)
+for payload formats.
 
 ## Honeypot
 
-Use `/honeypot #channel` to assign or move the softban honeypot. Mochi posts and pins a warning banner in the channel, then softbans members who send messages there. A softban is a ban followed by an immediate unban: it removes the member and recent messages without keeping a permanent ban.
+Use `/honeypot #channel` to assign or move the softban honeypot. Mochi posts and pins a warning banner in the channel. It then softbans members who send messages there.
+
+A softban bans a member and then unbans the member. It removes the member and recent messages without keeping a permanent ban.
 
 The banner is edited after each successful trigger, and its persistent kick count is stored in SQLite.
 
@@ -25,4 +29,4 @@ Mochi needs these permissions in the honeypot channel/server:
 - `Embed Links`
 - `Ban Members`
 
-Enable Discord's **Message Content Intent** for the application because the feature listens for message creation events.
+Enable Discord's **Message Content Intent** for the application. The feature needs this intent to receive message creation events.

@@ -1,16 +1,7 @@
 const { DEMO_GUILD_ID, DEMO_AUTOMOD_RULES, DEMO_GUILD } = require('./fixtures');
 const { SafetyEvents } = require('../../../src/app/eventBus');
 
-/**
- * Demo safety gateway — in-memory AutoMod/safety mirror for APP_MODE=demo.
- *
- * In live mode the Discord gateway's AutoModerationRule* events are the single
- * source of realtime rule notifications (SafetyService deliberately does NOT
- * publish after a mutation). In demo mode there is no Discord echo, so this
- * gateway mirrors the authoritative-event model by publishing one canonical
- * AutoModRuleUpdated payload after every mutation. The payload shape is
- * identical to the live Discord-event path.
- */
+/** In-memory AutoMod gateway used by the demo test harness. */
 class DemoSafetyGateway {
   constructor({ eventBus = null } = {}) {
     this.eventBus = eventBus;
@@ -112,4 +103,3 @@ class DemoSafetyGateway {
 }
 
 module.exports = { DemoSafetyGateway };
-

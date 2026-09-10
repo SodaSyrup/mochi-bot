@@ -154,7 +154,7 @@ async function runSafetyTests() {
     await ctx.server.close();
   });
 
-  suite.testAsync('service does NOT publish AutoModRuleUpdated after a mutation (Option A: Discord echo is authoritative)', async () => {
+  suite.testAsync('service does not publish a duplicate AutoModRuleUpdated event', async () => {
     const { createRecordingBus } = require('./helpers/fakes');
     const { SafetyEvents } = require('../src/app/eventBus');
     const bus = createRecordingBus();
@@ -176,7 +176,7 @@ async function runSafetyTests() {
     await service.deleteRule('g', 'r1');
 
     const ruleEvents = bus.recorded.filter((r) => r.event === SafetyEvents.AutoModRuleUpdated);
-    assert.strictEqual(ruleEvents.length, 0, 'service must rely on the Discord echo, not publish a duplicate');
+    assert.strictEqual(ruleEvents.length, 0, 'service must not publish a duplicate event');
   });
 
   suite.testAsync('in-memory safety gateway publishes exactly one canonical event per mutation', async () => {

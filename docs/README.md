@@ -1,12 +1,14 @@
 # Mochi documentation
 
-Mochi is a Discord bot for invite tracking, server safety, and realtime dashboard administration.
+Mochi is a Discord bot for invite tracking, server safety, and real-time dashboard administration.
 
 ## Start here
 
 1. Follow [Getting started](getting-started.md) to install Mochi and configure Discord.
 2. Read [Deployment and operations](operations.md) before running a persistent instance.
-3. Use the feature guides for [invite tracking](features/invites.md), [moderation](features/moderation.md), [global protection](features/global-bans.md), and [permission groups](features/permission-groups.md).
+3. Use the feature guides for [invite tracking](features/invites.md),
+   [moderation](features/moderation.md), [global protection](features/global-bans.md),
+   and [permission groups](features/permission-groups.md).
 
 ## Guides
 
@@ -25,4 +27,4 @@ Mochi is a Discord bot for invite tracking, server safety, and realtime dashboar
 
 ## Configuration reference
 
-`.env.example` is the authoritative list of environment variables and defaults. The [Getting started](getting-started.md) guide explains the values that matter for local and production deployments.
+`.env.example` lists all environment variables and their default values. The [Getting started](getting-started.md) guide explains the settings for local and production deployments.

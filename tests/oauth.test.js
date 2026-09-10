@@ -225,6 +225,36 @@ async function runOAuthTests() {
     await ctx.server.close();
   });
 
+  suite.testAsync('production OAuth emits its secure session cookie behind the HTTPS proxy', async () => {
+    const { startTestServer } = require('./helpers/server');
+    const ctx = await startTestServer({
+      mode: 'production',
+      seed: false,
+      env: {
+        CLIENT_ID: 'cid',
+        CLIENT_SECRET: 'sec',
+        DEV_AUTH_BYPASS: 'false',
+        DASHBOARD_URL: 'https://mochi.example.com',
+        REDIRECT_URI: 'https://mochi.example.com/auth/callback',
+        SESSION_SECRET: 'production-session-secret-long-enough-for-tests',
+      },
+    });
+
+    const login = await fetch(`${ctx.baseUrl}/auth/login`, {
+      redirect: 'manual',
+      headers: { 'X-Forwarded-Proto': 'https' },
+    });
+    const cookie = login.headers.get('set-cookie');
+
+    assert.strictEqual(login.status, 302);
+    assert.ok(cookie, 'the OAuth state session must be returned to the browser');
+    assert.ok(cookie.includes('Secure'), 'the production session cookie must remain Secure');
+    assert.ok(cookie.includes('HttpOnly'));
+    assert.ok(cookie.includes('SameSite=Lax'));
+
+    await ctx.server.close();
+  });
+
   return suite.run();
 }
 

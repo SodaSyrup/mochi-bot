@@ -5,7 +5,7 @@ const { resolveBotStatus } = require('../src/dashboard/public/js/shared');
 async function runFrontendShellTests() {
   const suite = new TestSuite('Frontend Shell (layout + status)');
 
-  suite.test('navigation groups and routes match the planned structure', () => {
+  suite.test('navigation groups expose the expected routes', () => {
     assert.deepStrictEqual(NAV_GROUPS.map((g) => g.label), ['Invites', 'Moderation', 'System']);
 
     const routes = {};
@@ -55,7 +55,7 @@ async function runFrontendShellTests() {
     });
   });
 
-  suite.test('status resolver never emits presentation colors or drama', () => {
+  suite.test('status resolver keeps status text descriptive', () => {
     const outputs = [resolveBotStatus({ connected: true, tag: 'Mochi#1' }), resolveBotStatus({})];
     for (const out of outputs) {
       assert.ok(!/#[0-9a-fA-F]{3,6}\b/.test(out.text), 'no hex colors in status text');

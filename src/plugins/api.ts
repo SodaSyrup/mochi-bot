@@ -1,11 +1,69 @@
-/** Public, versioned contracts exposed to third-party plugins.
- *
- * This module is intentionally type-only at runtime.  Plugin implementations
- * can import these contracts without importing the application composition
- * root, which keeps the extension boundary independent from core internals.
- */
+/** Public contracts exposed to plugins. This module has no runtime dependencies. */
 
 export type PluginId = string;
+
+export type PluginLifecycleState = 'discovered' | 'ordered' | 'configured' | 'migrated' | 'registered' | 'started' | 'stopped' | 'failed';
+
+export interface ServiceFactoryContext {
+  pluginId: PluginId;
+  config: Record<string, unknown>;
+  services: { get<T = unknown>(key: string): T; has(key: string): boolean };
+  core: Record<string, unknown>;
+  logger: PluginLogger;
+}
+
+export interface ServiceProvider<T = unknown> {
+  key: string;
+  dependencies?: readonly string[];
+  eager?: boolean;
+  create: (context: ServiceFactoryContext) => T;
+}
+
+export interface PluginConfigDefinition<T = unknown> {
+  defaults?: unknown;
+  parse: (input: { env: Record<string, string | undefined>; configuredValue: unknown }) => T;
+  public?: (value: T) => unknown;
+}
+
+export type HttpAccessPolicy =
+  | { kind: 'public' }
+  | { kind: 'authenticated' }
+  | { kind: 'guild'; permission: 'view' | 'manage'; guildParam?: string; requirePluginEnabled?: boolean }
+  | { kind: 'capability'; capability: string };
+
+export interface DashboardNavigationContribution {
+  section: string;
+  label: string;
+  icon: string;
+  order?: number;
+}
+
+export interface DashboardAssetContribution {
+  id: string;
+  root: string;
+  mountPath?: string;
+}
+
+export interface CapabilityContribution {
+  id: string;
+  resolve: (context: { user: unknown; session: unknown; config: unknown }) => boolean | Promise<boolean>;
+}
+
+export interface ManagedJobContribution {
+  id: string;
+  intervalMs?: number;
+  start: (context: Record<string, unknown>) => void | Promise<void>;
+  stop?: (context: Record<string, unknown>) => void | Promise<void>;
+}
+
+export interface PluginEventResult {
+  stopPropagation?: boolean;
+  [key: string]: unknown;
+}
+
+export function stopPropagation(): PluginEventResult {
+  return Object.freeze({ stopPropagation: true });
+}
 
 export interface PluginManifest {
   id: PluginId;
@@ -14,6 +72,11 @@ export interface PluginManifest {
   apiVersion: number;
   description?: string;
   requires?: readonly PluginId[];
+  entry?: string;
+  order?: number;
+  defaultEnabled?: boolean;
+  guildConfigurable?: boolean;
+  capabilities?: readonly string[];
   [key: string]: unknown;
 }
 
@@ -56,6 +119,7 @@ export interface DashboardApiContribution {
   id: string;
   mountPath?: string;
   scope?: string;
+  access?: HttpAccessPolicy;
   install: (router: unknown, dependencies?: unknown) => void;
   [key: string]: unknown;
 }
@@ -63,7 +127,11 @@ export interface DashboardApiContribution {
 export interface DashboardPageContribution {
   id: string;
   path: string;
-  file: string;
+  file?: string;
+  render?: (request: unknown, response: unknown) => void;
+  assets?: DashboardAssetContribution;
+  navigation?: DashboardNavigationContribution;
+  access?: HttpAccessPolicy;
   [key: string]: unknown;
 }
 
@@ -83,6 +151,7 @@ export interface PluginContext<BaseServices extends Record<string, any> = Record
   baseServices: BaseServices;
   services: {
     register: (name: string, value: unknown) => unknown;
+    provide?: (provider: ServiceProvider) => void;
     get: <T = unknown>(name: string) => T | undefined;
     has: (name: string) => boolean;
   };
@@ -91,7 +160,10 @@ export interface PluginContext<BaseServices extends Record<string, any> = Record
   dashboardApi: { register: (contribution: DashboardApiContribution) => void };
   dashboardPages: { register: (page: DashboardPageContribution) => void };
   pages: { register: (page: DashboardPageContribution) => void };
+  assets: { register: (asset: DashboardAssetContribution) => void };
   realtime: { register: (contribution: RealtimeContribution) => void };
+  capabilities?: { register: (contribution: CapabilityContribution) => void };
+  jobs?: { register: (contribution: ManagedJobContribution) => void };
   contributions: PluginContributionRegistry;
   [key: string]: unknown;
 }
@@ -102,12 +174,18 @@ export interface PluginContributionRegistry {
   registerDiscordEvent(pluginId: PluginId, handler: DiscordEventContribution, metadata?: Record<string, unknown>): void;
   registerDashboardApi(pluginId: PluginId, contribution: DashboardApiContribution): void;
   registerPage(pluginId: PluginId, page: DashboardPageContribution): void;
+  registerAsset?(pluginId: PluginId, asset: DashboardAssetContribution): void;
   registerRealtime(pluginId: PluginId, contribution: RealtimeContribution): void;
+  registerServiceProvider?(pluginId: PluginId, provider: ServiceProvider): void;
+  registerCapability?(pluginId: PluginId, contribution: CapabilityContribution): void;
+  registerJob?(pluginId: PluginId, contribution: ManagedJobContribution): void;
 }
 
 export interface MochiPlugin<BaseServices extends Record<string, any> = Record<string, any>> {
   manifest: PluginManifest;
   migrations?: readonly PluginMigration[];
+  config?: PluginConfigDefinition;
+  sourceRoot?: string;
   register: (context: PluginContext<BaseServices>) => void | Promise<void>;
   start?: (context: PluginContext<BaseServices>) => void | Promise<void>;
   stop?: (context: PluginContext<BaseServices>) => void | Promise<void>;

@@ -2,9 +2,7 @@ const express = require('express');
 const { ValidationError } = require('../errors');
 const { AutoModerationRuleEventType, AutoModerationRuleTriggerType } = require('../../platform/discord/autoModConstants');
 
-/**
- * Safety/AutoMod routes — thin adapters over SafetyService.
- */
+/** Dashboard routes for AutoMod settings and rules. */
 function createSafetyRoutes({ safetyService }) {
   const router = express.Router({ mergeParams: true });
 

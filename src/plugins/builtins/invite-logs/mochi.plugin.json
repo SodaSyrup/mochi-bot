@@ -1,0 +1,11 @@
+{
+  "id": "invite-logs",
+  "name": "Invite Logs",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "entry": "./index.ts",
+  "order": 30,
+  "defaultEnabled": true,
+  "guildConfigurable": true,
+  "requires": ["invites"]
+}

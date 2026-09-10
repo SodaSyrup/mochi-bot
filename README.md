@@ -1,6 +1,6 @@
 # Mochi
 
-Mochi is a lightweight Discord invite-tracking bot with a live web dashboard, built for Bun and SQLite.
+Mochi is a Discord bot for invite tracking. It has a live web dashboard. It uses Bun and SQLite.
 
 ## Quick start
 
@@ -18,13 +18,13 @@ bun run deploy-commands
 bun dev
 ```
 
-The dashboard is available at <http://localhost:3000>. Configure `.env` before deploying; production has stricter startup validation than development.
+The dashboard is available at <http://localhost:3000>. Configure `.env` before deployment. Production checks more settings at startup than development.
 
 ## What Mochi provides
 
 - Invite attribution, net-invite tracking, campaign labels, leaves, rejoins, vanity URLs, and suspicious-account handling
 - Configurable invite logs for joins, leaves, and bot add/remove activity
-- A dashboard with live events, analytics, invite management, AutoMod controls, grouped category permissions, a honeypot, and plugin settings
+- A dashboard with live events, analytics, invite management, AutoMod controls, category permission groups, a honeypot, and plugin settings
 - Optional global protection using a centrally managed Cloudflare D1 registry, local caching, per-guild alert/enforcement modes, and exemptions
 - Discord OAuth, per-guild authorization, authenticated realtime rooms, and server-side sessions
 - Explicit built-in plugins for utility commands, invites, invite logs, safety, grouped category permissions, and honeypot moderation

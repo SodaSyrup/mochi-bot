@@ -3,24 +3,32 @@
     constructor() {
       this.guildId = null;
       this.data = null;
+      this.refreshGeneration = 0;
       window.Mochi?.onGuildChange((guildId) => { this.guildId = guildId; this.refresh(); });
       window.Mochi?.onRealtime('globalBanEnforcement', (event) => { if (event.guildId === this.guildId) this.refresh(); });
     }
 
     async refresh() {
       if (!this.guildId) return;
+      const guildId = this.guildId;
+      const generation = ++this.refreshGeneration;
       try {
-        this.data = await apiFetch(`/api/guilds/${this.guildId}/global-bans`);
+        const data = await apiFetch(`/api/guilds/${guildId}/global-bans`);
+        if (guildId !== this.guildId || generation !== this.refreshGeneration) return;
+        this.data = data;
         this.render();
       } catch (error) { window.Mochi?.showToast(`Could not load global protection: ${error.message}`, 'leave'); }
     }
 
     async save(event) {
       event.preventDefault();
+      const guildId = this.guildId;
+      if (!guildId) return;
       const mode = document.getElementById('global-bans-mode-select').value;
       if (mode === 'enforce' && !window.confirm('Enable permanent global-ban enforcement for this server?')) return;
       try {
-        await apiFetch(`/api/guilds/${this.guildId}/global-bans/settings`, { method: 'PATCH', body: { mode, logChannelId: document.getElementById('global-bans-channel').value || null, deleteMessageSeconds: Number(document.getElementById('global-bans-delete').value || 0) } });
+        await apiFetch(`/api/guilds/${guildId}/global-bans/settings`, { method: 'PATCH', body: { mode, logChannelId: document.getElementById('global-bans-channel').value || null, deleteMessageSeconds: Number(document.getElementById('global-bans-delete').value || 0) } });
+        if (guildId !== this.guildId) return;
         window.Mochi?.showToast('Global protection settings saved.', 'success');
         await this.refresh();
       } catch (error) { window.Mochi?.showToast(`Could not save settings: ${error.message}`, 'leave'); }
@@ -28,15 +36,20 @@
 
     async addExemption(event) {
       event.preventDefault();
+      const guildId = this.guildId;
+      if (!guildId) return;
       try {
-        await apiFetch(`/api/guilds/${this.guildId}/global-bans/exemptions`, { method: 'POST', body: { userId: document.getElementById('global-bans-user-id').value, reason: document.getElementById('global-bans-reason').value } });
+        await apiFetch(`/api/guilds/${guildId}/global-bans/exemptions`, { method: 'POST', body: { userId: document.getElementById('global-bans-user-id').value, reason: document.getElementById('global-bans-reason').value } });
+        if (guildId !== this.guildId) return;
         event.target.reset(); await this.refresh();
       } catch (error) { window.Mochi?.showToast(`Could not add exemption: ${error.message}`, 'leave'); }
     }
 
     async removeExemption(userId) {
-      await apiFetch(`/api/guilds/${this.guildId}/global-bans/exemptions/${encodeURIComponent(userId)}`, { method: 'DELETE' });
-      await this.refresh();
+      const guildId = this.guildId;
+      if (!guildId) return;
+      await apiFetch(`/api/guilds/${guildId}/global-bans/exemptions/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+      if (guildId === this.guildId) await this.refresh();
     }
 
     async reconcile() {

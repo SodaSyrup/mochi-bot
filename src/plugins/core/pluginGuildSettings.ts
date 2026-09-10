@@ -8,6 +8,7 @@ export class PluginGuildSettingsService {
   readonly byId: Map<string, MochiPlugin>;
   readonly globallyDisabled: Set<string>;
   readonly logger: any;
+  onChange: ((change: { guildId: string; pluginId: string; enabled: boolean }) => void) | null = null;
 
   constructor({ db, plugins, globallyDisabled = [], logger = console }: { db: any; plugins: MochiPlugin[]; globallyDisabled?: string[]; logger?: any }) {
     this.db = db;
@@ -26,7 +27,7 @@ export class PluginGuildSettingsService {
     const plugin = this.getPlugin(pluginId);
     if (!plugin || visiting.has(pluginId)) return false;
     const row = this.db.prepare('SELECT enabled FROM guild_plugin_settings WHERE guild_id = ? AND plugin_id = ?').get(guildId, pluginId);
-    if (row && !row.enabled) return false;
+    if (row ? !row.enabled : plugin.manifest.defaultEnabled === false) return false;
     visiting.add(pluginId);
     const dependenciesEnabled = (plugin.manifest.requires || []).every((dependency) => this.isEnabled(guildId, dependency, visiting));
     visiting.delete(pluginId);
@@ -43,8 +44,8 @@ export class PluginGuildSettingsService {
       return {
         id, name: plugin.manifest.name, version: plugin.manifest.version, description: plugin.manifest.description || '',
         requires: [...(plugin.manifest.requires || [])],
-        enabled: globallyDisabled || blockedBy.length > 0 ? false : row ? Boolean(row.enabled) : true,
-        globallyDisabled, locked: globallyDisabled || blockedBy.length > 0, blockedBy, updatedAt: row?.updated_at || null,
+        enabled: globallyDisabled || blockedBy.length > 0 ? false : row ? Boolean(row.enabled) : plugin.manifest.defaultEnabled !== false,
+        globallyDisabled, locked: globallyDisabled || blockedBy.length > 0 || plugin.manifest.guildConfigurable === false, blockedBy, updatedAt: row?.updated_at || null,
       };
     });
   }
@@ -55,6 +56,7 @@ export class PluginGuildSettingsService {
     const plugin = this.getPlugin(pluginId);
     if (!plugin) throw new NotFoundError('Plugin not found.');
     if (this.isGloballyDisabled(pluginId)) throw new ConflictError('This plugin is disabled by the application configuration.');
+    if (plugin.manifest.guildConfigurable === false) throw new ConflictError('This plugin cannot be changed per guild.');
     if (enabled) {
       const missing = (plugin.manifest.requires || []).filter((dependency) => !this.isEnabled(guildId, dependency));
       if (missing.length > 0) throw new ConflictError(`Enable dependency plugin(s) first: ${missing.join(', ')}.`);
@@ -67,7 +69,7 @@ export class PluginGuildSettingsService {
     });
     tx();
     this.logger.info?.('plugins', pluginId, 'Updated guild plugin state', { guildId, enabled });
+    this.onChange?.({ guildId, pluginId, enabled });
     return this.list(guildId).find((entry) => entry.id === pluginId);
   }
 }
-

@@ -7,14 +7,7 @@ const { discordInviteUrl, discordDefaultAvatar } = require('../../../platform/di
 const { DEFAULTS } = require('../../../config/defaults');
 const { ValidationError } = require('../../../dashboard/errors');
 
-/**
- * Application service for the invites feature.
- *
- * Owns the join/leave attribution pipeline (serialized per guild), delegates
- * all persistence to the repository, applies policy via the shared invite
- * policy, and publishes canonical application events after successful
- * transitions. It knows nothing about the dashboard, Socket.IO or HTTP.
- */
+/** Coordinates invite reads, attribution, persistence, and application events. */
 class InviteService {
   constructor({ inviteRepository, guildRepository, inviteGateway, policy, eventBus, logger, limits = null }) {
     this.invites = inviteRepository;
@@ -26,8 +19,10 @@ class InviteService {
     this.limits = limits || DEFAULTS.limits;
 
     this.queue = new GuildSerialQueue();
-    // Operational caches (rebuildable from Discord; NOT durable truth).
+    // These caches can be rebuilt from Discord; the database remains the source of record.
     this.invitesCache = new Map(); // guildId -> Map<code, snapshot>
+    this.attributionCache = new Map(); // guildId -> Map<code, snapshot>; never replaced by dashboard reads
+    this.attributionVanityCache = new Map();
     this.vanityCache = new Map(); // guildId -> number|null
     this.memberInfo = new Map(); // guildId -> Map<userId, {username, avatar}>
   }
@@ -95,11 +90,23 @@ class InviteService {
   }
 
   #storeSnapshot(guildId, snapshot) {
+    this.#storeDisplaySnapshot(guildId, snapshot);
+    this.#storeAttributionSnapshot(guildId, snapshot);
+  }
+
+  #storeDisplaySnapshot(guildId, snapshot) {
     const map = new Map();
     for (const inv of snapshot.invites) map.set(inv.code, inv);
     this.invitesCache.set(guildId, map);
     this.vanityCache.set(guildId, snapshot.vanityUses ?? null);
     this.invites.saveCachedInvites(guildId, Array.from(map.values()));
+  }
+
+  #storeAttributionSnapshot(guildId, snapshot) {
+    const map = new Map();
+    for (const inv of snapshot.invites) map.set(inv.code, inv);
+    this.attributionCache.set(guildId, map);
+    this.attributionVanityCache.set(guildId, snapshot.vanityUses ?? null);
   }
 
   async reconcileGuildMembers(guildId) {
@@ -140,8 +147,8 @@ class InviteService {
 
       let attribution = attributionOverride;
       if (!attribution) {
-        const previous = this.invitesCache.get(memberData.guildId);
-        const previousVanity = this.vanityCache.get(memberData.guildId);
+        const previous = this.attributionCache.get(memberData.guildId);
+        const previousVanity = this.attributionVanityCache?.get(memberData.guildId);
         let snapshot = null;
         try {
           snapshot = await this.gateway.fetchGuildInvites(memberData.guildId);
@@ -293,12 +300,15 @@ class InviteService {
       createdAt: createdAt || new Date().toISOString(),
     });
     this.invitesCache.set(guildId, cache);
+    const attribution = this.attributionCache.get(guildId);
+    if (attribution) attribution.set(code, cache.get(code));
   }
 
   handleInviteDeleted(inviteData) {
     const { guildId, code } = inviteData;
     if (!guildId || !code) return;
     this.invitesCache.get(guildId)?.delete(code);
+    this.attributionCache.get(guildId)?.delete(code);
   }
 
   /**
@@ -306,7 +316,9 @@ class InviteService {
    */
   forgetGuild(guildId) {
     this.invitesCache.delete(guildId);
+    this.attributionCache.delete(guildId);
     this.vanityCache.delete(guildId);
+    this.attributionVanityCache?.delete(guildId);
     this.memberInfo.delete(guildId);
   }
 
@@ -411,7 +423,10 @@ class InviteService {
       if (snapshot) {
         // A fresh snapshot — even an EMPTY one — is authoritative and replaces
         // the persisted cache. Only a failed fetch may fall back below.
-        this.#storeSnapshot(guildId, snapshot);
+        // A dashboard refresh updates display/fallback data only. The join
+        // attribution baseline is advanced exclusively by join processing and
+        // explicit invite lifecycle events.
+        this.#storeDisplaySnapshot(guildId, snapshot);
         rows = snapshot.invites;
       } else {
         rows = this.invites.getCachedInvites(guildId);

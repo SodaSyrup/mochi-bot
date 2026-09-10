@@ -44,7 +44,7 @@ function publicUser(user, config = null) {
  *   - the request originates from a loopback address
  *   - OAuth credentials are missing/incomplete
  *
- * The `isDev` flag grants access to every guild the bot is connected to via
+ * The `isDev` flag grants access to every guild the bot is connected to through
  * GuildAccessService (there is no OAuth permission data in this mode). It is
  * never created in production, and never without the explicit bypass.
  */
@@ -60,13 +60,8 @@ function developmentUser() {
   };
 }
 
-/**
- * OAuth routes — thin adapter over DiscordOAuthClient. Login generates and
- * stores a cryptographically random `state`; the callback validates it before
- * exchanging the code. OAuth tokens (access + refresh) stay server-side in
- * `session.discordOAuth` and are never sent to browser JavaScript.
- */
-function createAuthRoutes({ oauthClient, config, logger }) {
+/** OAuth login, callback, logout, and session routes. */
+function createAuthRoutes({ oauthClient, config, logger, invalidateSession = null }) {
   const router = express.Router();
 
   router.get('/user', (req, res) => {
@@ -123,7 +118,7 @@ function createAuthRoutes({ oauthClient, config, logger }) {
         oauthClient.fetchGuilds(accessToken),
       ]);
 
-      req.session.user = {
+      const authenticatedUser = {
         id: userData.id,
         username: userData.username,
         discriminator: userData.discriminator,
@@ -143,12 +138,20 @@ function createAuthRoutes({ oauthClient, config, logger }) {
 
       // Server-side OAuth credentials for permission refresh. Never exposed to
       // the browser, never logged, never returned in API JSON.
-      req.session.discordOAuth = {
+      const oauthMaterial = {
         accessToken,
         refreshToken: refreshToken || null,
         expiresAt: expiresIn ? Date.now() + expiresIn * 1000 : null,
         guildPermissionsFetchedAt: Date.now(),
       };
+
+      // Rotate the session identifier after a successful OAuth exchange so a
+      // pre-authentication cookie cannot be fixed into the authenticated session.
+      if (typeof req.session.regenerate === 'function') {
+        await new Promise((resolve, reject) => req.session.regenerate((error) => error ? reject(error) : resolve()));
+      }
+      req.session.user = authenticatedUser;
+      req.session.discordOAuth = oauthMaterial;
 
       res.redirect('/');
     } catch (err) {
@@ -159,12 +162,23 @@ function createAuthRoutes({ oauthClient, config, logger }) {
 
   router.get('/logout', (req, res) => {
     const accessToken = req.session?.discordOAuth?.accessToken;
-    req.session.destroy(() => {
+    const sid = req.sessionID;
+    const invalidate = (done) => {
+      if (typeof req.sessionStore?.invalidate === 'function') {
+        return req.sessionStore.invalidate(sid, done);
+      }
+      done?.(null);
+    };
+    invalidate((invalidateError) => {
+      invalidateSession?.(sid);
+      req.session.destroy((destroyError) => {
+        if (invalidateError || destroyError) logger?.warn?.('auth', 'logout', 'Session invalidation encountered an error.');
       // Best-effort OAuth token revocation; never blocks local logout.
       if (accessToken && oauthClient.enabled) {
         oauthClient.revokeToken(accessToken);
       }
       res.redirect('/');
+      });
     });
   });
 

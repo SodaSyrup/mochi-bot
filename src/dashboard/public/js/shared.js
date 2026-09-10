@@ -1,16 +1,8 @@
-/**
- * 🍡 Mochi Dashboard — Shared client library.
- *
- * Centralizes the API client, guild selection/persistence, Socket.IO realtime
- * subscriptions, safe toasts, and connection status. The application shell
- * (sidebar/topbar/navigation) lives in layout.js — nothing here builds markup
- * for it.
- */
+/** Shared dashboard API, guild selection, realtime subscriptions, and status. */
 
-/**
- * Centralized API client. JSON serialization, 401 -> redirect to login,
- * 403 -> authorization error, consistent error extraction. No business rules.
- */
+/** API client with consistent JSON errors and authentication redirects. */
+let authenticationRedirectStarted = false;
+
 async function apiFetch(url, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData)) {
@@ -24,9 +16,13 @@ async function apiFetch(url, options = {}) {
   try { data = await res.json(); } catch { /* non-JSON body */ }
 
   if (res.status === 401) {
-    // Redirect to login only if we are not already on the login flow, to
-    // avoid a reload storm when login is temporarily unavailable.
-    if (!window.location.pathname.startsWith('/auth/') && !window.location.search.includes('error=')) {
+    // A page can issue several API requests at startup. Only the first 401 may
+    // begin OAuth; concurrent /auth/login responses would create competing
+    // state sessions and make a valid Discord callback fail intermittently.
+    if (!authenticationRedirectStarted
+      && !window.location.pathname.startsWith('/auth/')
+      && !window.location.search.includes('error=')) {
+      authenticationRedirectStarted = true;
       window.location.href = '/auth/login';
     }
     const err = new Error('UNAUTHORIZED');
@@ -51,7 +47,7 @@ const MOCHI_CONSTANTS = typeof window !== 'undefined'
   : require('./constants');
 
 /**
- * Map bot telemetry to a semantic status. Colors belong to CSS via
+ * Map bot telemetry to a semantic status. CSS controls colors through
  * `data-status`; this function returns only the semantic state and plain text.
  */
 function resolveBotStatus({ connected = false, tag = '' } = {}) {
@@ -306,7 +302,7 @@ class MochiSharedCore {
       const ping = `${data.bot.ping} ms`;
       const ram = `${data.telemetry.ramMB} MB`;
 
-      // Compact status line (Overview) — plain sentence, no drama.
+      // Compact status line (Overview).
       const statusLine = document.getElementById('bot-status-line');
       if (statusLine) {
         statusLine.textContent = `${text} · ${ping} latency · ${ram} memory`;
@@ -375,7 +371,7 @@ class MochiSharedCore {
   /**
    * Floating Toast Notifications. Content is a string (plain text) or an array
    * of segments: { text } | { b } (bold) | { code }. Text is always rendered
-   * via textContent — external data can never inject HTML.
+   * through textContent — external data cannot inject HTML.
    */
   showToast(content, type = 'success') {
     let container = document.getElementById('toast-container');

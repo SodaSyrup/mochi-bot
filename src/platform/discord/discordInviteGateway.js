@@ -1,11 +1,7 @@
 const { ChannelType } = require('discord.js');
 const { DEFAULTS } = require('../../config/defaults');
 
-/**
- * Feature-oriented adapter between Discord.js invite objects and the invite
- * application service. All Discord.js collections are translated into plain
- * application DTOs here so the domain layer never touches Discord primitives.
- */
+/** Converts Discord invite objects to the DTOs used by the invite service. */
 class DiscordInviteGateway {
   constructor({ client, logger }) {
     this.client = client;
@@ -38,7 +34,8 @@ class DiscordInviteGateway {
   /**
    * Fetch all invites plus vanity usage for a guild.
    * @returns {Promise<{ invites: Array, vanityUses: number|null }|null>} null
-   *   when the snapshot cannot be fetched (e.g. missing permission).
+   *   when the snapshot cannot be fetched. For example, the bot may lack a
+   *   required permission.
    */
   async fetchGuildInvites(guildId) {
     const guild = this.#guild(guildId);
@@ -53,6 +50,11 @@ class DiscordInviteGateway {
         this.logger?.error('invites', 'fetchGuildInvites', `Failed to fetch invites for guild ${guildId}`, { guildId, error: err });
         return null;
       }
+    } else {
+      // An empty list here would be interpreted as an authoritative snapshot
+      // and erase the last known attribution/display cache. Missing Manage
+      // Guild permission means normal invite data is unavailable.
+      return null;
     }
 
     let vanityUses = null;
@@ -120,7 +122,7 @@ class DiscordInviteGateway {
       maxUses: parseInt(maxUses, 10) || 0,
       temporary: Boolean(temporary),
       unique: true,
-      reason: reason || 'Created via Mochi Dashboard',
+      reason: reason || 'Created through Mochi Dashboard',
     });
 
     const snapshot = this.toInviteSnapshot(inv);
@@ -135,7 +137,7 @@ class DiscordInviteGateway {
     const fetched = await guild.invites.fetch();
     const inv = fetched.get(code);
     if (inv) {
-      await inv.delete('Revoked via Mochi Dashboard');
+      await inv.delete('Revoked through Mochi Dashboard');
     }
     return { code };
   }

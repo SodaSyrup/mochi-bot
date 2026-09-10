@@ -1,8 +1,4 @@
-/**
- * 🍡 Mochi Dashboard — Shared application shell.
- *
- * Single source of truth for the sidebar, topbar, navigation config, mobile
- * drawer, and the compact connection status. Every page exposes shell roots:
+/** Dashboard shell, navigation, and compact connection status.
  *
  *   <div id="sidebar-root"></div>
  *   <div id="topbar-root"></div>
@@ -12,8 +8,7 @@
  *
  *   <body data-page="overview">
  *
- * There is no per-page duplicated shell markup anymore. Exposes
- * `window.MochiLayout` used by shared.js (user + status + guild select).
+ * Exposes `window.MochiLayout` for shared.js.
  */
 (function (global) {
   'use strict';

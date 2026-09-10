@@ -1,0 +1,11 @@
+{
+  "id": "honeypot",
+  "name": "Honeypot Moderation",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "entry": "./index.ts",
+  "order": 50,
+  "defaultEnabled": true,
+  "guildConfigurable": true,
+  "requires": []
+}

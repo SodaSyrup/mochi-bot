@@ -12,10 +12,11 @@ async function bootstrap(): Promise<void> {
   console.log('═══════════════════════════════════════════════════════════');
 
   application = await createApplication({ config, client });
-  const { services, dashboard, logger, pluginManager } = application;
+  const { services, dashboard, logger, pluginManager, jobManager } = application;
   client.services = services;
-  loadBot(client, application.contributions);
+  await loadBot(client, application.contributions);
   await pluginManager.startAll();
+  await jobManager.start({ client, services, config });
   await dashboard.start(config.dashboard.port);
 
   if (config.bot.token) {
@@ -44,6 +45,7 @@ async function shutdown(signal: string): Promise<never> {
   };
 
   await attempt('plugins', async () => {
+    await application?.jobManager?.stop?.({ client, services: application?.services, config });
     const errors = await application?.pluginManager?.stopAll?.();
     if (errors?.length) failures.push(...errors.map((entry: any) => ({ label: `plugin:${entry.pluginId}`, error: entry.error })));
   });

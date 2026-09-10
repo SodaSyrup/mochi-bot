@@ -1,0 +1,10 @@
+{
+  "id": "external-fixture",
+  "name": "External Fixture",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "entry": "./index.ts",
+  "defaultEnabled": true,
+  "guildConfigurable": true,
+  "requires": []
+}

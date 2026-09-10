@@ -4,6 +4,7 @@ class GlobalBanRepository {
   constructor(db) {
     this.db = db;
     this.ensureSchema();
+    this.#ensureLeaseColumns();
   }
 
   ensureSchema() {
@@ -64,6 +65,8 @@ class GlobalBanRepository {
         last_error_code TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        lease_token TEXT,
+        lease_expires_at TEXT,
         UNIQUE (guild_id, user_id, source_event_id, action)
       );
       CREATE INDEX IF NOT EXISTS idx_global_ban_jobs_due ON global_ban_enforcement_jobs (status, next_attempt_at);
@@ -79,6 +82,13 @@ class GlobalBanRepository {
         occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+  }
+
+  #ensureLeaseColumns() {
+    const columns = new Set(this.db.prepare('PRAGMA table_info(global_ban_enforcement_jobs)').all().map((row) => row.name));
+    if (!columns.has('lease_token')) this.db.exec('ALTER TABLE global_ban_enforcement_jobs ADD COLUMN lease_token TEXT');
+    if (!columns.has('lease_expires_at')) this.db.exec('ALTER TABLE global_ban_enforcement_jobs ADD COLUMN lease_expires_at TEXT');
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_global_ban_jobs_lease ON global_ban_enforcement_jobs (status, lease_expires_at)');
   }
 
   getCache(userId) {
@@ -206,8 +216,12 @@ class GlobalBanRepository {
     return this.db.prepare('SELECT * FROM global_ban_exemptions WHERE guild_id = ? ORDER BY created_at DESC').all(guildId);
   }
 
-  getExemption(guildId, userId) {
-    return this.db.prepare('SELECT * FROM global_ban_exemptions WHERE guild_id = ? AND user_id = ?').get(guildId, userId) || null;
+  listExpiredExemptionGuilds(now = Date.now()) {
+    return this.db.prepare("SELECT DISTINCT guild_id FROM global_ban_exemptions WHERE expires_at IS NOT NULL AND datetime(expires_at) <= datetime(?)").all(new Date(now).toISOString()).map((row) => row.guild_id);
+  }
+
+  getExemption(guildId, userId, now = Date.now()) {
+    return this.db.prepare("SELECT * FROM global_ban_exemptions WHERE guild_id = ? AND user_id = ? AND (expires_at IS NULL OR datetime(expires_at) > datetime(?))").get(guildId, userId, new Date(now).toISOString()) || null;
   }
 
   setExemption(guildId, userId, { reason, createdBy, expiresAt = null }) {
@@ -221,20 +235,23 @@ class GlobalBanRepository {
   }
 
   deleteExemption(guildId, userId) {
-    this.db.prepare('DELETE FROM global_ban_exemptions WHERE guild_id = ? AND user_id = ?').run(guildId, userId);
+    return this.db.prepare('DELETE FROM global_ban_exemptions WHERE guild_id = ? AND user_id = ?').run(guildId, userId);
   }
 
-  enqueue({ guildId, userId, sourceEventId = 0, action = 'ban' }) {
+  enqueue({ guildId, userId, sourceEventId = 0, action = 'ban', force = false }) {
+    if (force) {
+      this.db.prepare("UPDATE global_ban_enforcement_jobs SET status = 'pending', next_attempt_at = CURRENT_TIMESTAMP, lease_token = NULL, lease_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ? AND source_event_id = ? AND action = ? AND status IN ('cancelled', 'skipped', 'dead')").run(guildId, userId, Number(sourceEventId) || 0, action);
+    }
     this.db.prepare(`
       INSERT OR IGNORE INTO global_ban_enforcement_jobs (guild_id, user_id, source_event_id, action)
       VALUES (?, ?, ?, ?)
     `).run(guildId, userId, Number(sourceEventId) || 0, action);
   }
 
-  enqueueForGuild(guildId, sourceEventId = 0) {
+  enqueueForGuild(guildId, sourceEventId = 0, { force = false } = {}) {
     const records = this.listActiveCache();
     const tx = this.db.transaction(() => {
-      for (const record of records) this.enqueue({ guildId, userId: record.user_id, sourceEventId: sourceEventId || record.last_event_id, action: 'ban' });
+      for (const record of records) this.enqueue({ guildId, userId: record.user_id, sourceEventId: sourceEventId || record.last_event_id, action: 'ban', force });
     });
     tx();
     return records.length;
@@ -247,32 +264,45 @@ class GlobalBanRepository {
     return guildId ? this.db.prepare(query).run(userId, guildId) : this.db.prepare(query).run(userId);
   }
 
-  claimDueJobs(limit = 20) {
+  recoverExpiredJobs(now = Date.now()) {
+    const timestamp = new Date(now).toISOString();
+    return this.db.prepare("UPDATE global_ban_enforcement_jobs SET status = 'failed', next_attempt_at = ?, lease_token = NULL, lease_expires_at = NULL, last_error_code = 'LEASE_EXPIRED', updated_at = CURRENT_TIMESTAMP WHERE status = 'running' AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime(?))").run(timestamp, timestamp);
+  }
+
+  claimDueJobs(limit = 20, { leaseSeconds = 60 } = {}) {
+    this.recoverExpiredJobs();
     const rows = this.db.prepare(`
       SELECT * FROM global_ban_enforcement_jobs
       WHERE status IN ('pending', 'failed') AND datetime(next_attempt_at) <= datetime('now')
       ORDER BY id LIMIT ?
     `).all(limit);
     const tx = this.db.transaction(() => {
-      const update = this.db.prepare("UPDATE global_ban_enforcement_jobs SET status = 'running', attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('pending', 'failed')");
-      return rows.filter((row) => update.run(row.id).changes > 0).map((row) => ({ ...row, status: 'running', attempts: row.attempts + 1 }));
+      const update = this.db.prepare("UPDATE global_ban_enforcement_jobs SET status = 'running', attempts = attempts + 1, lease_token = ?, lease_expires_at = datetime('now', ?), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('pending', 'failed')");
+      return rows.reduce((claimed, row) => {
+        const leaseToken = require('crypto').randomUUID();
+        if (update.run(leaseToken, `+${Math.max(1, Number(leaseSeconds) || 60)} seconds`, row.id).changes > 0) claimed.push({ ...row, status: 'running', attempts: row.attempts + 1, lease_token: leaseToken });
+        return claimed;
+      }, []);
     });
     return tx();
   }
 
-  completeJob(job, { outcome, detailsCode = null, retry = false, errorCode = null, retryAfterSeconds = 30 } = {}) {
-    const status = retry ? 'failed' : (outcome === 'cancelled' || outcome === 'skipped' ? 'skipped' : 'succeeded');
+  completeJob(job, { outcome, detailsCode = null, retry = false, terminal = false, errorCode = null, retryAfterSeconds = 30 } = {}) {
+    const status = retry ? 'failed' : (outcome === 'cancelled' || outcome === 'skipped' ? 'skipped' : (terminal || outcome === 'permanent_error' ? 'dead' : 'succeeded'));
     const next = new Date(Date.now() + retryAfterSeconds * 1000).toISOString();
-    this.db.transaction(() => {
-      this.db.prepare(`
+    const transaction = this.db.transaction(() => {
+      const updated = this.db.prepare(`
         UPDATE global_ban_enforcement_jobs SET status = ?, outcome_code = ?, last_error_code = ?,
-          next_attempt_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).run(status, outcome || null, errorCode || null, next, job.id);
+          next_attempt_at = ?, lease_token = NULL, lease_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running' AND lease_token = ?
+      `).run(status, outcome || null, errorCode || null, next, job.id, job.lease_token || null);
+      if (updated.changes === 0) return false;
       this.db.prepare(`
         INSERT INTO global_ban_enforcement_events (job_id, guild_id, user_id, source_event_id, action, outcome, details_code)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(job.id, job.guild_id, job.user_id, job.source_event_id, job.action, outcome || status, detailsCode);
-    })();
+      return true;
+    });
+    return transaction();
   }
 
   recordEnforcementEvent({ jobId = null, guildId, userId, sourceEventId = 0, action, outcome, detailsCode = null } = {}) {

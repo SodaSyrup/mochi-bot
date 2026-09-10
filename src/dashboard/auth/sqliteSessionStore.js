@@ -4,13 +4,7 @@ const { DEFAULTS } = require('../../config/defaults');
 
 const DEFAULT_SESSION_TTL_MS = DEFAULTS.dashboard.sessionTtlSeconds * 1000;
 
-/**
- * Small durable express-session store backed by SQLite.
- *
- * The session cookie only contains a signed session id. The session payload
- * (including OAuth refresh material) remains server-side in this database.
- * This avoids losing every login when the dashboard process is restarted.
- */
+/** SQLite-backed express-session store. Session data stays server-side. */
 class SqliteSessionStore extends session.Store {
   constructor({ path, db = null, ttlMs = DEFAULT_SESSION_TTL_MS } = {}) {
     super();
@@ -28,12 +22,21 @@ class SqliteSessionStore extends session.Store {
       );
       CREATE INDEX IF NOT EXISTS idx_dashboard_sessions_expires_at
         ON dashboard_sessions (expires_at);
+      CREATE TABLE IF NOT EXISTS dashboard_session_revocations (
+        sid TEXT PRIMARY KEY,
+        expires_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_dashboard_session_revocations_expires_at
+        ON dashboard_session_revocations (expires_at);
     `);
   }
 
   get(sid, callback) {
     try {
       const now = Date.now();
+      this.#purgeRevocations(now);
+      const revoked = this.db.prepare('SELECT 1 FROM dashboard_session_revocations WHERE sid = ? AND expires_at > ?').get(sid, now);
+      if (revoked) return callback(null, null);
       const row = this.db
         .prepare(
           'SELECT data FROM dashboard_sessions WHERE sid = ? AND (expires_at IS NULL OR expires_at > ?)'
@@ -53,6 +56,11 @@ class SqliteSessionStore extends session.Store {
 
   set(sid, sessionData, callback) {
     try {
+      if (this.#isRevoked(sid)) {
+        const error = new Error('SESSION_REVOKED');
+        callback?.(error);
+        return;
+      }
       const data = JSON.stringify(sessionData);
       const expiresAt = this.#expiresAt(sessionData);
       this.db
@@ -68,8 +76,35 @@ class SqliteSessionStore extends session.Store {
     }
   }
 
+  /** Persist a socket refresh only while the SID is still live. */
+  setIfActive(sid, sessionData, callback) {
+    try {
+      const now = Date.now();
+      this.#purgeRevocations(now);
+      const expiresAt = this.#expiresAt(sessionData);
+      const result = this.db.prepare(`
+        UPDATE dashboard_sessions SET data = ?, expires_at = ?
+        WHERE sid = ? AND (expires_at IS NULL OR expires_at > ?)
+          AND NOT EXISTS (SELECT 1 FROM dashboard_session_revocations WHERE sid = ? AND expires_at > ?)
+      `).run(JSON.stringify(sessionData), expiresAt, sid, now, sid, now);
+      if (result.changes !== 1) {
+        const error = new Error('SESSION_REVOKED');
+        callback?.(error);
+        return;
+      }
+      callback?.(null);
+    } catch (error) {
+      callback?.(error);
+    }
+  }
+
   touch(sid, sessionData, callback) {
     try {
+      if (this.#isRevoked(sid)) {
+        const error = new Error('SESSION_REVOKED');
+        callback?.(error);
+        return;
+      }
       this.db
         .prepare('UPDATE dashboard_sessions SET expires_at = ? WHERE sid = ?')
         .run(this.#expiresAt(sessionData), sid);
@@ -85,6 +120,39 @@ class SqliteSessionStore extends session.Store {
       callback?.(null);
     } catch (error) {
       callback?.(error);
+    }
+  }
+
+  /**
+   * Invalidate a session before deleting its row. The tombstone closes the
+   * race where an in-flight Express or Socket.IO request tries to save an old
+   * in-memory session after logout. Tombstones are bounded by the session TTL.
+   */
+  invalidate(sid, callback) {
+    try {
+      const expiresAt = Date.now() + this.ttlMs;
+      this.db.transaction(() => {
+        this.db.prepare('INSERT INTO dashboard_session_revocations (sid, expires_at) VALUES (?, ?) ON CONFLICT(sid) DO UPDATE SET expires_at = excluded.expires_at').run(sid, expiresAt);
+        this.db.prepare('DELETE FROM dashboard_sessions WHERE sid = ?').run(sid);
+      })();
+      callback?.(null);
+    } catch (error) {
+      callback?.(error);
+    }
+  }
+
+  isActive(sid, callback) {
+    try {
+      const now = Date.now();
+      this.#purgeRevocations(now);
+      const row = this.db.prepare('SELECT 1 FROM dashboard_sessions WHERE sid = ? AND (expires_at IS NULL OR expires_at > ?)').get(sid, now);
+      const revoked = this.db.prepare('SELECT 1 FROM dashboard_session_revocations WHERE sid = ? AND expires_at > ?').get(sid, now);
+      const active = Boolean(row && !revoked);
+      if (callback) callback(null, active);
+      return active;
+    } catch (error) {
+      if (callback) callback(error);
+      return false;
     }
   }
 
@@ -122,6 +190,16 @@ class SqliteSessionStore extends session.Store {
     }
     if (Number.isFinite(cookie.maxAge)) return Date.now() + Math.max(0, cookie.maxAge);
     return null;
+  }
+
+  #isRevoked(sid) {
+    const now = Date.now();
+    this.#purgeRevocations(now);
+    return Boolean(this.db.prepare('SELECT 1 FROM dashboard_session_revocations WHERE sid = ? AND expires_at > ?').get(sid, now));
+  }
+
+  #purgeRevocations(now = Date.now()) {
+    this.db.prepare('DELETE FROM dashboard_session_revocations WHERE expires_at <= ?').run(now);
   }
 }
 

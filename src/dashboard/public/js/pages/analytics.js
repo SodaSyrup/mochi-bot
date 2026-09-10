@@ -302,7 +302,7 @@ class AnalyticsPage {
     } else {
       actionBadge = `<span class="badge badge-success">Joined server</span>`;
       const labelBadge = item.inviteLabel ? ` <span class="badge badge-neutral">${this.escapeHtml(item.inviteLabel)}</span>` : '';
-      actionDetail = `Via <code>${this.escapeHtml(item.inviteCode)}</code>${labelBadge}`;
+      actionDetail = `Through <code>${this.escapeHtml(item.inviteCode)}</code>${labelBadge}`;
     }
 
     // Status badge
@@ -368,14 +368,14 @@ class AnalyticsPage {
   }
 
   formatRelativeTime(dateString) {
-    if (!dateString) return 'Just now';
+    if (!dateString) return 'Now';
     const d = new Date(dateString);
     if (isNaN(d.getTime())) return 'Recently';
 
     const now = new Date();
     const diffSec = Math.floor((now - d) / 1000);
 
-    if (diffSec < 45) return 'Just now';
+    if (diffSec < 45) return 'Now';
     if (diffSec < 90) return '1 minute ago';
     if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
     if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;

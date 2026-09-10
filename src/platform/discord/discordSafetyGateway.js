@@ -62,7 +62,7 @@ class DiscordSafetyGateway {
       })),
       exemptRoles: payload.exemptRoles || [],
       exemptChannels: payload.exemptChannels || [],
-      reason: 'Created via Mochi Safety Dashboard',
+      reason: 'Created through Mochi Safety Dashboard',
     };
 
     const triggerType = p.triggerType;
@@ -185,7 +185,7 @@ class DiscordSafetyGateway {
     }
     if (updates.exemptRoles !== undefined) payload.exemptRoles = updates.exemptRoles;
     if (updates.exemptChannels !== undefined) payload.exemptChannels = updates.exemptChannels;
-    payload.reason = 'Updated via Mochi Safety Dashboard';
+    payload.reason = 'Updated through Mochi Safety Dashboard';
 
     const edited = await guild.autoModerationRules.edit(ruleId, payload);
     return this.formatRule(edited);
@@ -197,7 +197,7 @@ class DiscordSafetyGateway {
     if (!guild.members?.me?.permissions?.has('ManageGuild')) {
       throw new Error('Bot lacks Manage Guild permission.');
     }
-    await guild.autoModerationRules.delete(ruleId, 'Deleted via Mochi Safety Dashboard');
+    await guild.autoModerationRules.delete(ruleId, 'Deleted through Mochi Safety Dashboard');
     return { ruleId };
   }
 }

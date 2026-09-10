@@ -12,15 +12,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Feature-oriented gateway for the invite-logs feature.
- *
- * Sends plain-text log messages through Mochi itself (no webhooks) and resolves
- * who added a bot from the Discord audit log. Discord.js primitives are
- * translated into plain DTOs before returning. All failures are degraded to
- * `false` / `null` — invite logging is secondary infrastructure and must never
- * crash the invite pipeline.
- */
+/** Sends invite logs and looks up bot additions in the Discord audit log. */
 class DiscordInviteLogGateway {
   constructor({ client, logger }) {
     this.client = client;
@@ -28,7 +20,8 @@ class DiscordInviteLogGateway {
   }
 
   /**
-   * Send a plain message to a guild channel, suppressing all mentions.
+   * Send a plain message to a guild channel. User mention syntax is rendered
+   * as a clickable reference, while allowedMentions prevents notifications.
    * @returns {Promise<boolean>} true on success, false on any failure.
    */
   async sendMessage(guildId, channelId, content) {
@@ -89,7 +82,7 @@ class DiscordInviteLogGateway {
   }
 
   /**
-   * Find who recently added a bot via the Discord audit log (AuditLogEvent
+   * Find who recently added a bot through the Discord audit log (AuditLogEvent
    * BotAdd). Conservatively rejects old unrelated entries and retries a few
    * times with short delays because audit logs can appear slightly after
    * guildMemberAdd.

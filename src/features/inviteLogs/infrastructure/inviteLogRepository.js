@@ -1,10 +1,4 @@
-/**
- * Durable persistence for the invite-logs feature.
- *
- * Only bot-adder attribution lives here. Human joins/leaves are logged by
- * consuming InviteEvents — the invite ledger (invite_members, invite_events,
- * inviters) remains the single source of truth and is never touched here.
- */
+/** Stores bot-adder attribution and invite event history. */
 class InviteLogRepository {
   constructor(db) {
     this.db = db;

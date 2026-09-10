@@ -1,10 +1,6 @@
 const { GlobalBanRemoteError } = require('../infrastructure/cloudflareGlobalBanClient');
 
-/**
- * Builds a review queue from the selected Discord guild's local bans. This
- * service deliberately never mutates the global registry: recommendations are
- * only hints that an owner may copy into the proposal form.
- */
+/** Builds review recommendations from a guild's local bans. */
 class GlobalBanRecommendationService {
   constructor({ guildService, adminClient, logger = console, cacheTtlMs = 15_000 }) {
     this.guildService = guildService;

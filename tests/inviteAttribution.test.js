@@ -28,6 +28,11 @@ async function runAttributionTests() {
     assert.strictEqual(r.inviteCode, 'new');
   });
 
+  suite.test('new invite with multiple uses is ambiguous', () => {
+    const result = resolveAttribution({ previous: [], current: [{ code: 'new', uses: 2, inviterId: 'u1' }], previousVanityUses: 0, currentVanityUses: 0 });
+    assert.strictEqual(result.type, AttributionType.UNKNOWN);
+  });
+
   suite.test('multiple invites increased -> UNKNOWN', () => {
     const r = resolveAttribution({
       previous: [inv('a', 5), inv('b', 3)],

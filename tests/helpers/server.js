@@ -11,19 +11,32 @@ const { seedDemoData } = require('./demo/seedDemoData');
 
 const silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
 
-/**
- * Start a full application instance for integration tests using an isolated
- * in-memory database. Never touches data/mochi.sqlite.
- *
- * @param {{ mode?: string, seed?: boolean, client?: object, env?: object, services?: object }} options
- *   `env` overrides specific environment variables for the config (e.g. to
- *   force OAuth on/off regardless of the local .env).
- *   `services` replaces the composed services object entirely (used to inject
- *   fakes that fail in controlled ways).
- */
+/** Start an isolated integration-test application. */
 async function startTestServer({ mode = 'development', seed = true, client = null, env = {}, services = null, gatewayOverrides = null } = {}) {
-  const testEnv = { CLIENT_ID: '', CLIENT_SECRET: '', DEV_AUTH_BYPASS: 'true', ...env };
-  const config = buildConfig({ ...process.env, APP_MODE: mode, PORT: '0', ...testEnv });
+  // Keep integration tests isolated from local databases and credentials.
+  // Individual tests can still opt into a value explicitly through `env`.
+  const testEnv = {
+    APP_MODE: mode,
+    PORT: '0',
+    DASHBOARD_URL: 'http://localhost:0',
+    CLIENT_ID: '',
+    CLIENT_SECRET: '',
+    // Production-mode integration tests need a syntactically present token;
+    // no helper ever connects a client to Discord.
+    DISCORD_TOKEN: 'test-discord-token',
+    SESSION_SECRET: 'test-session-secret',
+    DATABASE_PATH: ':memory:',
+    SESSION_STORE_PATH: ':memory:',
+    GLOBAL_BANS_API_URL: '',
+    GLOBAL_BANS_SYNC_TOKEN: '',
+    GLOBAL_BANS_ADMIN_TOKEN: '',
+    GLOBAL_BANS_ADMIN_USER_IDS: '',
+    MOCHI_PLUGIN_PATHS: '',
+    DISABLED_PLUGINS: '',
+    DEV_AUTH_BYPASS: 'true',
+    ...env,
+  };
+  const config = buildConfig(testEnv);
   const db = createDatabase({ path: ':memory:' });
   const testGateways = gatewayOverrides || (!client && !services ? {
     guild: new DemoGuildGateway(),

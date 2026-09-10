@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Mochi - An All-Purpose Discord Bot with Invite Tracking & Real-Time Web Dashboard",
   "main": "src/index.ts",
+  "exports": {
+    "./plugin-api": "./src/plugins/sdk.ts"
+  },
   "type": "commonjs",
   "packageManager": "bun@1.3.14",
   "scripts": {
@@ -18,6 +21,7 @@
     "deploy-commands": "bun src/bot/deploy.ts",
     "rebuild-projections": "bun scripts/rebuild-invite-projections.ts",
     "test": "bun test",
+    "test:worker": "bun test tests/cloudflareGlobalBanWorker.test.js",
     "typecheck": "bun run typecheck:server && bun run typecheck:tests && bun run typecheck:browser && bun run typecheck:worker",
     "typecheck:server": "tsc -p tsconfig.server.json",
     "typecheck:tests": "tsc -p tsconfig.tests.json",

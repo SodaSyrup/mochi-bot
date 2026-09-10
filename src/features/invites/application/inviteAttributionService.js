@@ -1,14 +1,6 @@
 const { AttributionType } = require('../domain/attribution');
 
-/**
- * Conservative invite attribution. Given the previous cached snapshot and a
- * freshly fetched snapshot, decide which invite (if any) unambiguously
- * explains one new join.
- *
- * Ambiguous situations resolve to UNKNOWN rather than crediting a user based
- * on a guess — recording an explicit unknown is safer than crediting the wrong
- * person.
- */
+/** Resolves invite attribution from a previous and current snapshot. */
 function resolveAttribution({ previous, current, previousVanityUses, currentVanityUses }) {
   const previousByCode = new Map((previous || []).map((inv) => [inv.code, inv]));
 
@@ -19,7 +11,7 @@ function resolveAttribution({ previous, current, previousVanityUses, currentVani
     const uses = inv.uses || 0;
     const cached = previousByCode.get(inv.code);
     if (!cached) {
-      if (uses === 1) deltas.push({ code: inv.code, delta: 1, invite: inv });
+      if (uses > 0) deltas.push({ code: inv.code, delta: uses, invite: inv });
       continue;
     }
     const delta = uses - (cached.uses || 0);
@@ -30,10 +22,10 @@ function resolveAttribution({ previous, current, previousVanityUses, currentVani
   const vanityDelta = hasVanityBaseline ? currentVanityUses - previousVanityUses : 0;
   const vanityChanged = vanityDelta > 0;
 
-  const singleUseCandidates = deltas.filter((d) => d.delta === 1);
+  const positiveCandidates = deltas.filter((d) => d.delta > 0);
 
   // Vanity only when it increased by exactly one AND no normal invite competes.
-  if (vanityDelta === 1 && singleUseCandidates.length === 0) {
+  if (vanityDelta === 1 && positiveCandidates.length === 0) {
     return { type: AttributionType.VANITY, inviterId: null, inviteCode: null };
   }
   if (vanityChanged) {
@@ -42,8 +34,8 @@ function resolveAttribution({ previous, current, previousVanityUses, currentVani
   }
 
   // Exactly one invite gained exactly one use and vanity did not move.
-  if (singleUseCandidates.length === 1) {
-    const candidate = singleUseCandidates[0];
+  if (positiveCandidates.length === 1 && positiveCandidates[0].delta === 1) {
+    const candidate = positiveCandidates[0];
     if (candidate.invite.inviterId) {
       return {
         type: AttributionType.INVITE,

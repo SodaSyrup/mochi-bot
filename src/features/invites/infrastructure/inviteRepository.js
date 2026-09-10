@@ -4,17 +4,7 @@ const { rebuildGuildInviteProjections } = require('./projectionRebuilder');
 const DAILY_COLUMNS = ['joins', 'leaves', 'fakes'];
 const { DEFAULTS } = require('../../../config/defaults');
 
-/**
- * Owns invite persistence only. Business rules (policy, attribution, queueing)
- * live in application/domain layers and feed plain DTOs into this repository.
- *
- * All state transitions (join/leave) are transactional so the lifecycle event,
- * current member projection, inviter projection and daily projection can never
- * be left half-applied.
- *
- * The lifecycle ledger (invite_events) is the durable source of truth;
- * invite_members and inviters are projections of it.
- */
+/** Persists invite lifecycle events and their derived projections. */
 class InviteRepository {
   constructor(db) {
     this.db = db;
@@ -129,7 +119,7 @@ class InviteRepository {
   }
 
   // Leaves only remove credit that was actually earned: a member excluded by
-  // the fake counter must not also subtract a net invite via `leaves`.
+  // the fake counter must not also subtract a net invite through `leaves`.
   #applyLeaveToInviter(guildId, memberId, attribution, isFake) {
     if (attribution.type !== AttributionType.INVITE) return;
     if (!attribution.inviterId || attribution.inviterId === memberId) return;

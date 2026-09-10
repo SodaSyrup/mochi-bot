@@ -1,6 +1,6 @@
 # Slash commands
 
-Mochi's registered application commands are:
+Mochi registers these application commands:
 
 | Command | Description | Default permission |
 | --- | --- | --- |
@@ -17,9 +17,14 @@ Mochi's registered application commands are:
 
 ## Native Discord command permissions
 
-Because Mochi uses Discord application commands, command access can be managed by Discord. After installing Mochi, open **Server Settings → Integrations → Mochi → Manage**. Members with **Manage Server** and **Manage Roles**, or administrators, can allow or deny commands for roles, members, and channels.
+Discord manages access to application commands. After installing Mochi, open
+**Server Settings → Integrations → Mochi → Manage**. Members with **Manage
+Server** and **Manage Roles**, and administrators, can allow or deny commands
+for roles, members, and channels.
 
-The registered defaults are `/invite-codes`, `/invite-label`, and `/honeypot` for **Manage Server**. The remaining commands are available to everyone by default. Discord's per-command integration settings can narrow or grant access as needed.
+The default **Manage Server** commands are `/invite-codes`, `/invite-label`, and
+`/honeypot`. The other commands are available to everyone by default. Discord's
+per-command integration settings can change this access.
 
 Re-run command deployment after changing command metadata:
 

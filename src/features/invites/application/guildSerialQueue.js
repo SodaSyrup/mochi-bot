@@ -30,7 +30,7 @@ class GuildSerialQueue {
 
     this.chains.set(guildId, next);
 
-    // Clean up when this entry completes so an idle guild does not leak.
+    // Clean up when this entry completes so an idle guild does not remain in memory.
     next.then(
       () => {
         if (this.chains.get(guildId) === next) this.chains.delete(guildId);

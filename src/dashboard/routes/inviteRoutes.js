@@ -3,16 +3,7 @@ const { ValidationError } = require('../errors');
 const { parseBoundedInt } = require('../http/parseBoundedInt');
 const { DEFAULTS } = require('../../config/defaults');
 
-/**
- * Invite routes — thin adapters over InviteService. No repository access,
- * no Socket.IO, no business rules here.
- *
- * Pagination policy (shared parser in src/dashboard/http/parseBoundedInt):
- *   leaderboard:  limit default 10 (1..100), page default 1 (1..1000000)
- *   history:      limit default 15 (1..100)
- *   activity-log: limit default 20 (1..100), offset default 0 (0..1000000)
- *   analytics:    days default 7 (1..90)
- */
+/** Dashboard routes for invite statistics, history, and reconciliation. */
 function createInviteRoutes({ inviteService, pagination = DEFAULTS.limits.pagination }) {
   const router = express.Router({ mergeParams: true });
 

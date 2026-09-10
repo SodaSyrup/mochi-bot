@@ -1,6 +1,6 @@
 const path = require('path');
 const crypto = require('crypto');
-const { DEFAULTS, DEFAULT_SECRET, LEGACY_ENV_KEYS, BUILTIN_PLUGIN_IDS } = require('./config/defaults');
+const { DEFAULTS, DEFAULT_SECRET, LEGACY_ENV_KEYS } = require('./config/defaults');
 const { PluginValidationError } = require('./plugins/core/errors');
 
 const APP_MODES = Object.freeze(['development', 'production'] as const);
@@ -46,6 +46,7 @@ function buildConfig(env: Environment = process.env): any {
   const permissionTtlSeconds = parseIntegerInRange(env.GUILD_PERMISSION_CACHE_TTL_SECONDS, DEFAULTS.auth.permissionTtlSeconds, 1, 24 * 60 * 60, 'GUILD_PERMISSION_CACHE_TTL_SECONDS');
   const fakeAccountThresholdDays = parseIntegerInRange(env.FAKE_ACCOUNT_THRESHOLD_DAYS, DEFAULTS.inviteTracker.fakeAccountThresholdDays, 0, DEFAULTS.inviteTracker.maxFakeAccountThresholdDays, 'FAKE_ACCOUNT_THRESHOLD_DAYS');
   const disabledPlugins = parseDisabledPlugins(env.DISABLED_PLUGINS);
+  const pluginPaths = parsePluginPaths(env.MOCHI_PLUGIN_PATHS);
   const globalBansAdminUserIds = parseDiscordUserIds(env.GLOBAL_BANS_ADMIN_USER_IDS);
   const globalBansAdminToken = String(env.GLOBAL_BANS_ADMIN_TOKEN || '').trim();
   if ((globalBansAdminUserIds.length > 0) !== Boolean(globalBansAdminToken)) throw new Error('[Config] GLOBAL_BANS_ADMIN_USER_IDS and GLOBAL_BANS_ADMIN_TOKEN must be configured together.');
@@ -57,7 +58,7 @@ function buildConfig(env: Environment = process.env): any {
 
   return {
     app: { mode, isProduction, isDevelopment, devAuthBypass, legacyEnvKeys },
-    plugins: { disabled: disabledPlugins, apiVersion: DEFAULTS.plugins.apiVersion },
+    plugins: { disabled: disabledPlugins, paths: pluginPaths, apiVersion: DEFAULTS.plugins.apiVersion },
     bot: { token, clientId, clientSecret, embedColor: env.EMBED_COLOR || DEFAULTS.bot.embedColor },
     dashboard: {
       port: parseIntegerInRange(env.PORT, DEFAULTS.dashboard.port, 0, 65535, 'PORT'),
@@ -88,10 +89,14 @@ function parseDisabledPlugins(value: unknown): string[] {
   const seen = new Set<string>();
   for (const id of ids) {
     if (seen.has(id)) throw new PluginValidationError(`[Config] DISABLED_PLUGINS contains duplicate plugin ID "${id}".`, { pluginId: id });
-    if (!BUILTIN_PLUGIN_IDS.includes(id)) throw new PluginValidationError(`[Config] DISABLED_PLUGINS contains unknown plugin ID "${id}".`, { pluginId: id });
     seen.add(id);
   }
   return ids;
+}
+
+function parsePluginPaths(value: unknown): string[] {
+  if (value === undefined || value === null || String(value).trim() === '') return [];
+  return [...new Set(String(value).split(',').map((entry) => entry.trim()).filter(Boolean))];
 }
 
 function parseDiscordUserIds(value: unknown): string[] {
@@ -119,3 +124,4 @@ module.exports.buildConfig = buildConfig;
 module.exports.resolveDatabasePath = resolveDatabasePath;
 module.exports.parseDisabledPlugins = parseDisabledPlugins;
 module.exports.parseDiscordUserIds = parseDiscordUserIds;
+module.exports.parsePluginPaths = parsePluginPaths;

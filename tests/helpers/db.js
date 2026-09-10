@@ -3,10 +3,7 @@ const { runMigrations } = require('../../src/database/migrations');
 const { InviteRepository } = require('../../src/features/invites/infrastructure/inviteRepository');
 const { GuildRepository } = require('../../src/features/guilds/infrastructure/guildRepository');
 
-/**
- * Create an isolated in-memory database with all migrations applied.
- * Tests must NEVER touch the real data/mochi.sqlite.
- */
+/** Create an isolated in-memory database with all migrations applied. */
 function createTestDb() {
   const db = createDatabase({ path: ':memory:' });
   runMigrations(db, { silent: true });

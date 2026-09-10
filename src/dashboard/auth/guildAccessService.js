@@ -1,25 +1,7 @@
 const { canManageGuild } = require('./permissions');
 const { ForbiddenError } = require('../errors');
 
-/**
- * Single source of truth for dashboard guild access.
- *
- * A guild is available to a user only when it is BOTH manageable by the
- * logged-in Discord user AND currently has Mochi as a member.
- *
- * Authorization is evaluated against a CURRENT permission snapshot. When a
- * GuildPermissionService is wired in, stale snapshots are refreshed from
- * Discord before the access decision (see GuildPermissionService); a failed or
- * revoked refresh fails closed rather than allowing stale authorization.
- *
- * Development behavior: a session created by the development convenience login
- *                 (`isDev`) may access every guild Mochi is in — there is no
- *                 OAuth permission data in that mode. Live sessions use the
- *                 intersection of manageable user guilds and bot guilds.
- *
- * Methods accept a session context ({ user, discordOAuth }) so permission
- * refresh can read/write the OAuth snapshot server-side.
- */
+/** Resolves the guilds a dashboard user can manage through the bot. */
 class GuildAccessService {
   constructor({ guildGateway, permissionService = null, isDevelopment = false }) {
     this.gateway = guildGateway;

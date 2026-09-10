@@ -73,17 +73,17 @@ function attachBotContributions(client: any, contributionRegistry: any) {
 
 function detachBotContributions(client: any, bindings: any[] = []) { for (const binding of bindings) client.off?.(binding.eventName, binding.listener); }
 
-function loadBot(client: any, contributionRegistry: any = null) {
+async function loadBot(client: any, contributionRegistry: any = null) {
   let registry = contributionRegistry;
   if (!registry) {
     const config = require('../config');
-    const catalog = require('../plugins/catalog');
+    const { discoverPluginCatalog } = require('../plugins/core/pluginLoader');
     const { ContributionRegistry } = require('../plugins/core/contributionRegistry');
     const { PluginManager } = require('../plugins/core/pluginManager');
     const services = client.services || {};
     registry = new ContributionRegistry({ baseServices: services, serviceTarget: services });
-    const manager = new PluginManager({ plugins: catalog, config, logger: console, baseContext: { client, services }, contributions: registry });
-    manager.registerAll();
+    const manager = new PluginManager({ plugins: discoverPluginCatalog({ configuredPaths: config.plugins?.paths || [] }), config, logger: console, baseContext: { client, services }, contributions: registry });
+    await manager.registerAll();
   }
   const coreBindings = attachCoreBotEvents(client, registry);
   const pluginBindings = attachBotContributions(client, registry);
@@ -102,4 +102,3 @@ function detachBot(client: any) {
 }
 
 module.exports = { loadBot, getFiles, attachBotContributions, detachBotContributions, attachCoreBotEvents, detachBot };
-

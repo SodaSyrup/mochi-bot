@@ -1,14 +1,7 @@
 const { UnauthorizedError, ExternalServiceError } = require('../errors');
 const { DISCORD_API_BASE_URL } = require('../../platform/discord/urls');
 
-/**
- * Discord OAuth2 client. Wraps the authorize/token/identity/guilds/refresh
- * flows. The auth route and GuildPermissionService stay thin adapters:
- * token mechanics (exchange, refresh, revocation) live here and nowhere else.
- *
- * Tokens are never logged, never returned in API JSON, and never sent to
- * browser JavaScript — they only ever live server-side in the session.
- */
+/** Handles Discord OAuth exchange, refresh, identity, guild lookup, and revocation. */
 class DiscordOAuthClient {
   constructor({ clientId, clientSecret, redirectUri, logger, fetchImpl = null }) {
     this.clientId = clientId;

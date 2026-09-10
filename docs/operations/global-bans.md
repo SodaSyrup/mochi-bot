@@ -1,7 +1,7 @@
 # Global protection operations
 
-Monitor the dashboard’s synchronization status, cache age, and pending job
-count. A healthy state means the local cursor is advancing and the cache is
+Monitor the dashboard's synchronization status, cache age, and pending job
+count. The system is healthy when the local cursor advances and the cache stays
 within its configured freshness window.
 
 If the Worker is unavailable:
@@ -13,8 +13,9 @@ If the Worker is unavailable:
 5. Use `GLOBAL_BANS_ENFORCEMENT_ENABLED=false` as the local emergency switch.
 
 If Discord permissions fail, fix `Ban Members` and the configured alert-channel
-permissions in the affected guild, then use the dashboard reconciliation action.
-Reconciliation is idempotent and resumes durable jobs after a process restart.
+permissions in the affected server. Then use the dashboard reconciliation
+action. Reconciliation is idempotent and resumes jobs after a process restart.
 
-Never manually delete D1 event rows to repair a cursor. The event feed is the
-audit trail. Use a snapshot/resynchronization procedure after taking a backup.
+Do not manually delete D1 event rows to repair a cursor. The event feed is the
+audit trail. Take a backup before you use a snapshot and synchronization
+procedure.

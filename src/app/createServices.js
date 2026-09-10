@@ -22,7 +22,7 @@ const { HoneypotService } = require('../features/honeypot/honeypotService');
 const { PluginGuildSettingsService } = require('../plugins/core/pluginGuildSettings');
 const { PermissionGroupRepository } = require('../features/permissionGroups/infrastructure/permissionGroupRepository');
 const { PermissionGroupService } = require('../features/permissionGroups/permissionGroupService');
-const defaultPluginCatalog = require('../plugins/catalog');
+const { discoverPluginCatalog } = require('../plugins/core/pluginLoader');
 const { GlobalBanRepository } = require('../features/globalBans/infrastructure/globalBanRepository');
 const { CloudflareGlobalBanClient } = require('../features/globalBans/infrastructure/cloudflareGlobalBanClient');
 const { CloudflareGlobalBanAdminClient } = require('../features/globalBans/infrastructure/cloudflareGlobalBanAdminClient');
@@ -34,7 +34,8 @@ const { DiscordGlobalBanGateway } = require('../platform/discord/discordGlobalBa
 /**
  * Compose all application services from a config + database + Discord client.
  */
-function createServices({ config, db, eventBus, client, logger, gatewayOverrides = {}, pluginCatalog = defaultPluginCatalog }) {
+function createServices({ config, db, eventBus, client, logger, gatewayOverrides = {}, pluginCatalog = null }) {
+  const resolvedPluginCatalog = pluginCatalog || discoverPluginCatalog({ configuredPaths: config.plugins?.paths || [] });
   const guildRepository = new GuildRepository(db, {
     defaultFakeThresholdDays: config.inviteTracker.fakeAccountThresholdDays,
   });
@@ -116,11 +117,17 @@ function createServices({ config, db, eventBus, client, logger, gatewayOverrides
   });
   const pluginSettings = new PluginGuildSettingsService({
     db,
-    plugins: pluginCatalog,
+    plugins: resolvedPluginCatalog,
     globallyDisabled: config.plugins?.disabled || [],
     logger,
   });
   inviteLogs.pluginSettings = pluginSettings;
+  globalBanService.setPluginSettings(pluginSettings);
+  pluginSettings.onChange = ({ guildId, pluginId, enabled }) => {
+    if (pluginId === 'global-bans' && enabled) {
+      globalBanService.reconcileGuild(guildId).catch((error) => logger.warn?.('global-bans', 'pluginSettings', 'Could not reconcile after re-enabling global protection.', { guildId, error }));
+    }
+  };
 
   const oauthClient = new DiscordOAuthClient({
     clientId: config.bot.clientId,

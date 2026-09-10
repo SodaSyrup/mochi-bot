@@ -1,6 +1,8 @@
 # Permission groups
 
-Permission Groups lets several Discord categories behave like one logical category in the Mochi dashboard. It is intended for servers where every project has its own category and project role, while studio, partner, or moderation roles need the same access across all projects.
+Permission Groups lets several Discord categories use one shared permission set
+in the Mochi dashboard. Use it when each project has its own category and role,
+but studio, partner, or moderation roles need the same access in all projects.
 
 ## Permission layers
 
@@ -11,23 +13,35 @@ A group contains:
 - optional channel-level role overrides; and
 - explicit Allow or Deny states for selected channel permissions.
 
-`Inherit` means Mochi does not manage that permission. Category rules provide the shared default, while a channel override can give a role a different state on one child channel—for example, denying `Send Messages` on an announcement channel while allowing it elsewhere. Mochi updates only the explicit permissions in the group's rules. Overwrites for each project's own role, other roles, members, and unmanaged permission bits remain untouched.
+`Inherit` means that Mochi does not manage the permission. Category rules
+provide the shared default. A channel override can give a role a different
+state on one child channel. For example, it can deny `Send Messages` on an
+announcement channel while allowing it on other channels. Mochi updates only
+the explicit permissions in the group rules. It does not change overwrites for
+project roles, other roles, members, or unmanaged permission bits.
 
 Each category may belong to only one permission group. This prevents two groups from competing over the same category.
 
-The dashboard also reads existing role overwrites from Discord. They appear under **Existing Discord permissions** with their current Allow/Deny states; choose **Edit** to bring an existing category or child-channel overwrite into the appropriate Mochi group.
+The dashboard also reads existing role overwrites from Discord. It shows them
+under **Existing Discord permissions** with their current Allow/Deny states.
+Choose **Edit** to add an existing category or child-channel overwrite to a
+Mochi group.
 
 ## Using the dashboard
 
 1. Open `/permission-groups` and choose **New group**.
-2. Name the group and select the project categories it should contain. The picker mirrors Discord's category/channel tree, including uncategorized channels, so the full server layout remains visible while choosing categories.
-3. Add each shared role, such as a modding studio or partner studio role.
+2. Name the group and select its project categories. The picker shows Discord's
+   category and channel tree, including uncategorized channels. You can see the
+   full server layout while you choose categories.
+3. Add each shared role, such as a studio or partner role.
 4. Set the category defaults to **Allow** or **Deny** and leave everything else as **Inherit**.
-5. Add a channel override when one child channel needs different behavior. Announcement, forum, voice, stage, and other channel types can be configured individually.
+5. Add a channel override when one child channel needs a different setting. You can configure announcement, forum, voice, stage, and other channel types separately.
 6. Choose **Save and apply**.
 
-Use **Sync** to reapply the saved shared layer if permissions were changed directly in Discord. Editing or deleting a group also removes permissions that the old group layer owned while leaving unrelated overwrites alone.
+Use **Sync** to apply the saved shared layer again after direct changes in
+Discord. Editing or deleting a group removes permissions owned by the old group
+layer. It leaves unrelated overwrites unchanged.
 
 ## Discord requirements
 
-Mochi needs **Manage Roles** and its bot role must sit above every role whose overwrites it manages. The dashboard user must have **Manage Server**, like other guild-scoped Mochi controls.
+Mochi needs **Manage Roles**. Its bot role must be above every role whose overwrites it manages. The dashboard user must have **Manage Server**, as with other server controls.

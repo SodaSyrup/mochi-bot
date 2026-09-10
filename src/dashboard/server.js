@@ -12,7 +12,7 @@ const { createApiRouter } = require('./routes/api');
 const { apiErrorHandler, apiNotFound } = require('./routes/errorMiddleware');
 const { PluginRegistrationError } = require('../plugins/core/errors');
 const { requireAuth } = require('./auth/requireAuth');
-const { requireGlobalBanAdmin } = require('./auth/requireGlobalBanAdmin');
+const { requireCapability } = require('./auth/requireCapability');
 
 /**
  * Express + Socket.IO dashboard server. Owns HTTP middleware/session config,
@@ -20,14 +20,21 @@ const { requireGlobalBanAdmin } = require('./auth/requireGlobalBanAdmin');
  * It does not contain business logic.
  */
 class DashboardServer {
-  constructor({ client = null, services = null, config, logger, sessionStore = null, contributions = null }) {
+  constructor({ client = null, services = null, config, logger, sessionStore = null, contributions = null, capabilities = null }) {
     this.client = client;
     this.services = services;
     this.config = config;
     this.logger = logger || console;
     this.contributions = contributions;
+    this.capabilities = capabilities;
 
     this.app = express();
+    // Production traffic is terminated by the dashboard's reverse proxy.
+    // Express must trust that single hop so req.secure reflects
+    // X-Forwarded-Proto=https; otherwise express-session silently refuses to
+    // emit the production-only Secure cookie and every OAuth callback loses
+    // the session that contains its state value.
+    if (config.app.isProduction) this.app.set('trust proxy', 1);
     this.server = http.createServer(this.app);
 
     this.sessionStore = sessionStore || new SqliteSessionStore({
@@ -65,6 +72,7 @@ class DashboardServer {
       logger: this.logger,
       contributions: this.contributions,
       pluginSettings: this.services?.pluginSettings,
+      sessionStore: this.sessionStore,
     });
 
     this.setupRoutes();
@@ -83,7 +91,7 @@ class DashboardServer {
     this.io.engine.use(this.sessionMiddleware);
 
     // HTML pages are served through named routes so page-level authorization
-    // cannot be bypassed via /pages/*.html. CSS and JavaScript remain public.
+    // cannot be bypassed through /pages/*.html. CSS and JavaScript remain public.
     this.app.use('/pages', (req, res) => res.status(404).send('Not found'));
     this.app.use(express.static(path.join(__dirname, 'public')));
   }
@@ -93,45 +101,71 @@ class DashboardServer {
       oauthClient: this.services?.oauthClient,
       config: this.config,
       logger: this.logger,
+      invalidateSession: (sid) => this.socketGateway?.invalidateSession(sid),
     });
     const apiRoutes = createApiRouter({
       client: this.client,
       config: this.config,
       services: this.services,
       contributions: this.contributions,
+      capabilities: this.capabilities,
     });
 
     this.app.use('/auth', authRoutes);
     this.app.use('/api', apiRoutes);
 
     const pagesDir = path.join(__dirname, 'public', 'pages');
-    const page = (file) => (req, res) => res.sendFile(path.join(pagesDir, file));
-
-    this.app.get('/global-ban-registry', requireAuth, requireGlobalBanAdmin(this.config), page('global-ban-registry.html'));
+    const page = (file) => (_req, res) => res.sendFile(file);
+    const pageAccess = (access) => {
+      if (!access || access.kind === 'public') return [];
+      if (access.kind === 'capability') return [requireAuth, requireCapability(access.capability, this.capabilities)];
+      return [requireAuth];
+    };
 
     const pageContributions = this.contributions?.getPageContributions?.() || [];
     if (this.contributions) {
       for (const descriptor of pageContributions) {
-        const resolved = path.resolve(pagesDir, descriptor.file);
-        if (!resolved.startsWith(`${pagesDir}${path.sep}`)) {
-          throw new PluginRegistrationError(`Dashboard page "${descriptor.id}" resolves outside the approved pages directory.`, {
+        if (typeof descriptor.render === 'function') {
+          this.app.get(descriptor.path, ...pageAccess(descriptor.access), descriptor.render);
+          continue;
+        }
+        const pluginRoot = descriptor.sourceRoot ? path.resolve(descriptor.sourceRoot) : null;
+        const builtinRoot = path.resolve(__dirname, '../plugins/builtins');
+        const isBuiltin = pluginRoot && isWithin(builtinRoot, pluginRoot);
+        const candidateRoot = pluginRoot && fsExists(path.join(pluginRoot, descriptor.file))
+          ? pluginRoot
+          : (!pluginRoot || isBuiltin) ? pagesDir : pluginRoot;
+        const resolved = path.resolve(candidateRoot, descriptor.file);
+        if (!isWithin(candidateRoot, resolved)) {
+          throw new PluginRegistrationError(`Dashboard page "${descriptor.id}" resolves outside its approved package root.`, {
             pluginId: descriptor.pluginId,
           });
         }
-        this.app.get(descriptor.path, page(descriptor.file));
+        this.app.get(descriptor.path, ...pageAccess(descriptor.access), page(resolved));
       }
     } else {
       // Compatibility path for direct DashboardServer construction without a
       // plugin registry; normal application startup uses page contributions.
-      this.app.get('/', page('overview.html'));
-      this.app.get('/analytics', page('analytics.html'));
-      this.app.get('/leaderboard', page('leaderboard.html'));
-      this.app.get('/codes', page('codes.html'));
-      this.app.get('/safety', page('safety.html'));
-      this.app.get('/honeypot', page('honeypot.html'));
-      this.app.get('/settings', page('settings.html'));
+      this.app.get('/', page(path.join(pagesDir, 'overview.html')));
+      this.app.get('/analytics', page(path.join(pagesDir, 'analytics.html')));
+      this.app.get('/leaderboard', page(path.join(pagesDir, 'leaderboard.html')));
+      this.app.get('/codes', page(path.join(pagesDir, 'codes.html')));
+      this.app.get('/safety', page(path.join(pagesDir, 'safety.html')));
+      this.app.get('/honeypot', page(path.join(pagesDir, 'honeypot.html')));
+      this.app.get('/settings', page(path.join(pagesDir, 'settings.html')));
     }
-    this.app.get('/plugins', page('plugins.html'));
+    this.app.get('/plugins', page(path.join(pagesDir, 'plugins.html')));
+
+    // Plugin-owned static files are mounted only from declared package roots.
+    // This lets an external plugin ship its own CSS/JS/images without copying
+    // assets into the host dashboard directory.
+    for (const asset of this.contributions?.getAssetContributions?.() || []) {
+      const root = path.resolve(asset.sourceRoot || process.cwd(), asset.root);
+      if (!fsExists(root) || (asset.sourceRoot && !isWithin(asset.sourceRoot, root))) {
+        throw new PluginRegistrationError(`Dashboard asset "${asset.id}" has an invalid root.`, { pluginId: asset.pluginId });
+      }
+      this.app.use(asset.mountPath || `/plugins/${asset.pluginId}/assets`, express.static(root, { fallthrough: false }));
+    }
 
     // JSON 404 for unknown API endpoints, HTML 404 for everything else.
     this.app.use('/api', apiNotFound);
@@ -168,5 +202,13 @@ class DashboardServer {
     });
   }
 }
+
+const fsExists = (target) => {
+  try { require('fs').statSync(target); return true; } catch { return false; }
+};
+const isWithin = (root, candidate) => {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+};
 
 module.exports = DashboardServer;

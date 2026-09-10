@@ -60,7 +60,7 @@ class GuildPermissionService {
 
   /**
    * Normalize raw Discord guild objects into the stored permission snapshot
-   * shape (parsed inside GuildAccessService via bitfield helpers).
+   * shape (parsed inside GuildAccessService through bitfield helpers).
    */
   normalizeGuildPermissions(guilds) {
     return (Array.isArray(guilds) ? guilds : []).map((g) => ({

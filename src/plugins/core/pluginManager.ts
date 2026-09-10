@@ -56,6 +56,19 @@ export class PluginManager {
     }
 
     const knownIds = new Set(validated.map((plugin) => plugin.manifest.id));
+    const pluginConfig = (this.config.plugins ||= {}).config || ((this.config.plugins as any).config = {});
+    for (const plugin of validated) {
+      if (!plugin.config?.parse) continue;
+      const id = plugin.manifest.id;
+      try {
+        pluginConfig[id] = plugin.config.parse({
+          env: process.env,
+          configuredValue: pluginConfig[id] === undefined ? plugin.config.defaults : pluginConfig[id],
+        });
+      } catch (error) {
+        throw new PluginValidationError(`Plugin "${id}" configuration could not be resolved.`, { pluginId: id, cause: error });
+      }
+    }
     const disabled = new Set<string>(this.config.plugins?.disabled || []);
     for (const id of disabled) if (!knownIds.has(id)) throw new PluginValidationError(`Unknown disabled plugin ID "${id}".`, { pluginId: id });
     const enabled = validated.filter((plugin) => !disabled.has(plugin.manifest.id));
@@ -86,22 +99,41 @@ export class PluginManager {
     };
   }
 
-  registerAll() {
+  registerAll(): InstanceType<typeof ContributionRegistry> | Promise<InstanceType<typeof ContributionRegistry>> {
     this.#prepare();
     if (this.state === 'registered' || this.state === 'started') return this.contributions;
     if (this.state === 'stopped') throw new PluginRegistrationError('Plugin manager is stopped and cannot register again.');
     if (this.state === 'failed') throw new PluginRegistrationError('Plugin manager is failed and cannot register again.');
-    try {
-      for (const plugin of this.orderedPlugins) {
+    const registerOne = (plugin: MochiPlugin) => {
         const context = this.contributions.contextFor(plugin, { ...this.baseContext, logger: this.logger, config: this.config, contributions: this.contributions, baseServices: this.baseContext.services || {} });
         this.registrationContext.set(plugin.manifest.id, context);
-        plugin.register(context as PluginContext);
+        const registration = plugin.register(context as PluginContext);
         this.pluginStates.set(plugin.manifest.id, 'registered');
         this.logger.info?.('plugins', plugin.manifest.id, 'Registered plugin', { version: plugin.manifest.version });
-      }
+        return registration;
+    };
+    const finalize = () => {
       this.contributions.syncCommands(this.baseContext.client);
       this.state = 'registered';
       return this.contributions;
+    };
+    const continueAsync = async (index: number): Promise<InstanceType<typeof ContributionRegistry>> => {
+      for (let cursor = index; cursor < this.orderedPlugins.length; cursor += 1) {
+        const plugin = this.orderedPlugins[cursor];
+        const registration = registerOne(plugin);
+        if (registration && typeof (registration as any).then === 'function') await registration;
+      }
+      return finalize();
+    };
+    try {
+      for (let index = 0; index < this.orderedPlugins.length; index += 1) {
+        const registration = registerOne(this.orderedPlugins[index]);
+        if (registration && typeof (registration as any).then === 'function') return Promise.resolve(registration).then(() => continueAsync(index + 1)).catch((error) => {
+          this.state = 'failed';
+          throw error instanceof PluginRegistrationError ? error : new PluginRegistrationError('Plugin registration failed.', { pluginId: pluginIdFrom(error) || this.orderedPlugins[index].manifest.id, cause: error });
+        });
+      }
+      return finalize();
     } catch (error) {
       this.state = 'failed';
       if (error instanceof PluginRegistrationError) throw error;
@@ -124,7 +156,7 @@ export class PluginManager {
     if (this.state === 'started') return this.startedPlugins.slice();
     if (this.state === 'stopped') throw new PluginLifecycleError('Plugin manager is stopped and cannot start.');
     if (this.state === 'failed') throw new PluginLifecycleError('Plugin manager is failed and cannot start.');
-    if (this.state !== 'registered') this.registerAll();
+    if (this.state !== 'registered') await this.registerAll();
     try {
       for (const plugin of this.orderedPlugins) {
         if (typeof plugin.start === 'function') await plugin.start(this.registrationContext.get(plugin.manifest.id) as PluginContext);

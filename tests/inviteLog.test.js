@@ -10,6 +10,10 @@ const { AttributionType } = require('../src/features/invites/domain/attribution'
 const { InviteEvents } = require('../src/app/eventBus');
 
 const silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
+const MEMBER_ID = '111111111111111111';
+const INVITER_ID = '222222222222222222';
+const BOT_ID = '333333333333333333';
+const ADDER_ID = '444444444444444444';
 
 function createFakeInviteLogGateway({ botAdder = null, sendError = null } = {}) {
   const sent = [];
@@ -63,10 +67,10 @@ function configureGuild(guilds, guildId, channelId) {
 
 const joinEvent = (guildId, over = {}) => ({
   guildId,
-  member: { id: 'm1', username: 'Alice', avatar: null },
-  attribution: { type: AttributionType.INVITE, inviterId: 'inv1', inviteCode: 'c' },
-  inviter: { id: 'inv1', username: 'Bob', avatar: null },
-  inviterStats: { userId: 'inv1', regular: 36, bonus: 0, leaves: 0, fake: 0, total: 36 },
+  member: { id: MEMBER_ID, username: 'Alice', avatar: null },
+  attribution: { type: AttributionType.INVITE, inviterId: INVITER_ID, inviteCode: 'c' },
+  inviter: { id: INVITER_ID, username: 'Bob', avatar: null },
+  inviterStats: { userId: INVITER_ID, regular: 36, bonus: 0, leaves: 0, fake: 0, total: 36 },
   isFake: false,
   occurredAt: '2026-01-01T10:00:00Z',
   ...over,
@@ -74,9 +78,9 @@ const joinEvent = (guildId, over = {}) => ({
 
 const leaveEvent = (guildId, over = {}) => ({
   guildId,
-  member: { id: 'm1', username: 'Alice', avatar: null },
-  attribution: { type: AttributionType.INVITE, inviterId: 'inv1', inviteCode: 'c' },
-  inviter: { id: 'inv1', username: 'Bob', avatar: null },
+  member: { id: MEMBER_ID, username: 'Alice', avatar: null },
+  attribution: { type: AttributionType.INVITE, inviterId: INVITER_ID, inviteCode: 'c' },
+  inviter: { id: INVITER_ID, username: 'Bob', avatar: null },
   isFake: false,
   occurredAt: '2026-01-01T11:00:00Z',
   ...over,
@@ -121,7 +125,7 @@ async function runInviteLogTests() {
     assert.strictEqual(gw.sent[0].channelId, 'chanA');
     assert.strictEqual(
       gw.sent[0].content,
-      '**Alice** joined and they were invited by **Bob**. **Bob** now has **36 invites**.'
+      `<@${MEMBER_ID}> joined and they were invited by <@${INVITER_ID}>. <@${INVITER_ID}> now has **36 invites**.`
     );
   });
 
@@ -133,7 +137,7 @@ async function runInviteLogTests() {
 
     assert.strictEqual(
       gw.sent[0].content,
-      '**Alice** joined and they were invited by **Bob**. **Bob** now has **1 invite**.'
+      `<@${MEMBER_ID}> joined and they were invited by <@${INVITER_ID}>. <@${INVITER_ID}> now has **1 invite**.`
     );
   });
 
@@ -160,7 +164,7 @@ async function runInviteLogTests() {
     await service.handleMemberLeft(leaveEvent('g'));
 
     assert.strictEqual(gw.sent.length, 1);
-    assert.strictEqual(gw.sent[0].content, '**Alice** left. They were invited by **Bob**.');
+    assert.strictEqual(gw.sent[0].content, `<@${MEMBER_ID}> left. They were invited by <@${INVITER_ID}>.`);
   });
 
   // ------------------------------------------------------------- UNKNOWN
@@ -175,7 +179,7 @@ async function runInviteLogTests() {
       inviterStats: null,
     }));
 
-    assert.strictEqual(gw.sent[0].content, '**Alice** joined, but I couldn\'t determine who invited them.');
+    assert.strictEqual(gw.sent[0].content, `<@${MEMBER_ID}> joined, but I couldn't determine who invited them.`);
   });
 
   suite.test('UNKNOWN leave uses the no-recorded-inviter wording', async () => {
@@ -187,7 +191,7 @@ async function runInviteLogTests() {
       inviter: null,
     }));
 
-    assert.strictEqual(gw.sent[0].content, '**Alice** left. I don\'t have a recorded inviter for them.');
+    assert.strictEqual(gw.sent[0].content, `<@${MEMBER_ID}> left. I don't have a recorded inviter for them.`);
   });
 
   // -------------------------------------------------------------- VANITY
@@ -202,7 +206,7 @@ async function runInviteLogTests() {
       inviterStats: null,
     }));
 
-    assert.strictEqual(gw.sent[0].content, '**Alice** joined via the server vanity URL.');
+    assert.strictEqual(gw.sent[0].content, `<@${MEMBER_ID}> joined via the server vanity URL.`);
   });
 
   suite.test('VANITY leave uses the original-vanity wording', async () => {
@@ -214,7 +218,7 @@ async function runInviteLogTests() {
       inviter: null,
     }));
 
-    assert.strictEqual(gw.sent[0].content, '**Alice** left. They originally joined via the server vanity URL.');
+    assert.strictEqual(gw.sent[0].content, `<@${MEMBER_ID}> left. They originally joined via the server vanity URL.`);
   });
 
   suite.test('RECONCILED joins produce no log (no startup spam)', async () => {
@@ -295,7 +299,7 @@ async function runInviteLogTests() {
 
     const ok = await waitUntil(() => gw.sent.length >= 1);
     assert.ok(ok, 'subscribed MemberJoined handler must send a message');
-    assert.strictEqual(gw.sent[0].content, '**Alice** joined and they were invited by **Bob**. **Bob** now has **36 invites**.');
+    assert.strictEqual(gw.sent[0].content, `<@${MEMBER_ID}> joined and they were invited by <@${INVITER_ID}>. <@${INVITER_ID}> now has **36 invites**.`);
   });
 
   suite.test('duplicate human join produces exactly one log because InviteService emits once', async () => {
@@ -336,14 +340,14 @@ async function runInviteLogTests() {
   // -------------------------------------------------------------- bot join
 
   suite.test('bot join with audit-log result sends a bot message and persists attribution', async () => {
-    const { service, guilds, gw, repo } = buildInviteLog({ gateway: createFakeInviteLogGateway({ botAdder: { id: 'user1', username: 'Bob' } }) });
+    const { service, guilds, gw, repo } = buildInviteLog({ gateway: createFakeInviteLogGateway({ botAdder: { id: ADDER_ID, username: 'Bob' } }) });
     configureGuild(guilds, 'g', 'chanA');
 
-    await service.handleBotJoin({ id: 'bot1', guildId: 'g', username: 'SomeBot' });
+    await service.handleBotJoin({ id: BOT_ID, guildId: 'g', username: 'SomeBot' });
 
-    assert.strictEqual(gw.sent[0].content, '🤖 **SomeBot** was added to this server by **Bob**.');
-    const stored = repo.getBotAttribution('g', 'bot1');
-    assert.strictEqual(stored.added_by_user_id, 'user1');
+    assert.strictEqual(gw.sent[0].content, `🤖 <@${BOT_ID}> was added to this server by <@${ADDER_ID}>.`);
+    const stored = repo.getBotAttribution('g', BOT_ID);
+    assert.strictEqual(stored.added_by_user_id, ADDER_ID);
     assert.strictEqual(stored.added_by_username, 'Bob');
   });
 
@@ -370,9 +374,9 @@ async function runInviteLogTests() {
     const { service, guilds, gw } = buildInviteLog();
     configureGuild(guilds, 'g', 'chanA');
 
-    await service.handleBotLeave({ id: 'bot9', guildId: 'g', username: 'SomeBot' });
+    await service.handleBotLeave({ id: BOT_ID, guildId: 'g', username: 'SomeBot' });
 
-    assert.strictEqual(gw.sent[0].content, '🤖 **SomeBot** has been removed from this server. I don\'t have a recorded adder for it.');
+    assert.strictEqual(gw.sent[0].content, `🤖 <@${BOT_ID}> has been removed from this server. I don't have a recorded adder for it.`);
   });
 
   suite.test('bot leave after restart uses the persisted adder from the same database', async () => {
@@ -381,7 +385,7 @@ async function runInviteLogTests() {
     // Service #1 (first process): resolves adder from audit log, persists it.
     const guilds1 = new GuildRepository(db);
     configureGuild(guilds1, 'g', 'chanA');
-    const gw1 = createFakeInviteLogGateway({ botAdder: { id: 'user1', username: 'Bob' } });
+    const gw1 = createFakeInviteLogGateway({ botAdder: { id: ADDER_ID, username: 'Bob' } });
     const s1 = new InviteLogService({
       guildRepository: guilds1,
       inviteLogRepository: new InviteLogRepository(db),
@@ -389,8 +393,8 @@ async function runInviteLogTests() {
       eventBus: createRecordingBus(),
       logger: silentLogger,
     });
-    await s1.handleBotJoin({ id: 'bot1', guildId: 'g', username: 'SomeBot' });
-    assert.strictEqual(gw1.sent[0].content, '🤖 **SomeBot** was added to this server by **Bob**.');
+    await s1.handleBotJoin({ id: BOT_ID, guildId: 'g', username: 'SomeBot' });
+    assert.strictEqual(gw1.sent[0].content, `🤖 <@${BOT_ID}> was added to this server by <@${ADDER_ID}>.`);
 
     // Service #2 (after restart): fresh repositories against the same db; no
     // audit-log access this time.
@@ -402,9 +406,9 @@ async function runInviteLogTests() {
       eventBus: createRecordingBus(),
       logger: silentLogger,
     });
-    await s2.handleBotLeave({ id: 'bot1', guildId: 'g', username: 'SomeBot' });
+    await s2.handleBotLeave({ id: BOT_ID, guildId: 'g', username: 'SomeBot' });
 
-    assert.strictEqual(gw2.sent[0].content, '🤖 **SomeBot** has been removed from this server. It was added by **Bob**.');
+    assert.strictEqual(gw2.sent[0].content, `🤖 <@${BOT_ID}> has been removed from this server. It was added by <@${ADDER_ID}>.`);
   });
 
   // ------------------------------------------------- bots never touch ledger
