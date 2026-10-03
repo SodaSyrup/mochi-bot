@@ -1,4 +1,4 @@
-export const migrations = [require('./001-initial')];
+export const migrations = [require('./001-initial'), require('./004-invite-log-imports'), require('./005-user-log-assumptions'), require('./006-user-log-entries')];
 const pluginSystemMigration = require('./002-plugin-system');
 const guildPluginSettingsMigration = require('./003-guild-plugin-settings');
 

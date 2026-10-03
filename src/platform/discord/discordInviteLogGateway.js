@@ -1,4 +1,5 @@
-const { AuditLogEvent, PermissionFlagsBits } = require('discord.js');
+const { AuditLogEvent, PermissionFlagsBits, GatewayIntentBits } = require('discord.js');
+const { ValidationError, ExternalServiceError } = require('../../dashboard/errors');
 const { DEFAULTS } = require('../../config/defaults');
 
 const {
@@ -17,6 +18,54 @@ class DiscordInviteLogGateway {
   constructor({ client, logger }) {
     this.client = client;
     this.logger = logger || console;
+  }
+
+  /** Fetch a bounded history. Filter by immutable bot ID, never by author name. */
+  async fetchImportMessages(guildId, channelId, sourceBotId, { limit = 1000, before = undefined, onProgress = () => {} } = {}) {
+    const guild = this.client?.guilds?.cache?.get(guildId);
+    if (!guild) throw new ExternalServiceError('Mochi is not connected to this server.');
+    if (!this.client.options.intents.has(GatewayIntentBits.MessageContent)) {
+      throw new ValidationError('Enable the Message Content intent before importing invite logs.');
+    }
+    let channel;
+    try {
+      channel = await guild.channels.fetch(channelId);
+    } catch {
+      throw new ExternalServiceError('Could not fetch the invite log channel.');
+    }
+    if (!channel?.isTextBased() || !channel.messages || channel.guildId !== guildId) {
+      throw new ValidationError('The invite log channel must be a text channel in this server.');
+    }
+    const permissions = channel.permissionsFor(guild.members.me);
+    if (!permissions?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory])) {
+      throw new ValidationError('Mochi needs View Channel and Read Message History in the invite log channel.');
+    }
+    const messages = [];
+    let scanned = 0;
+    let cursor = before;
+    let exhausted = false;
+    try {
+      while (scanned < limit) {
+        const batchLimit = Math.min(100, limit - scanned);
+        const batch = await channel.messages.fetch({ limit: batchLimit, before: cursor, cache: false });
+        if (batch.size === 0) { exhausted = true; break; }
+        scanned += batch.size;
+        onProgress(scanned);
+        for (const message of batch.values()) {
+          if (message.author?.id === sourceBotId && message.author.bot && !message.webhookId) {
+            messages.push({ id: message.id, content: message.content, embeds: message.embeds.map((embed) => embed.toJSON()), createdTimestamp: message.createdTimestamp, editedTimestamp: message.editedTimestamp });
+          }
+        }
+        const next = [...batch.keys()].reduce((a, b) => BigInt(a) < BigInt(b) ? a : b);
+        if (next === cursor) throw new Error('History cursor did not advance.');
+        cursor = next;
+        if (batch.size < batchLimit) { exhausted = true; break; }
+      }
+    } catch (error) {
+      this.logger.warn('inviteLogs', 'importHistory', 'Could not read invite log history.', { guildId, channelId, error });
+      throw new ExternalServiceError('Could not read invite log history. Try the preview again.');
+    }
+    return { messages, scanned, nextBefore: exhausted ? null : cursor, exhausted };
   }
 
   /**

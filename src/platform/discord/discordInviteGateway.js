@@ -6,6 +6,7 @@ class DiscordInviteGateway {
   constructor({ client, logger }) {
     this.client = client;
     this.logger = logger;
+    this.memberFetches = new Map();
   }
 
   #guild(guildId) {
@@ -95,18 +96,36 @@ class DiscordInviteGateway {
   }
 
   async fetchGuildMembers(guildId) {
+    const pending = this.memberFetches.get(guildId);
+    if (pending) return pending;
+    const request = this.#fetchGuildMembers(guildId);
+    this.memberFetches.set(guildId, request);
+    try {
+      return await request;
+    } finally {
+      if (this.memberFetches.get(guildId) === request) this.memberFetches.delete(guildId);
+    }
+  }
+
+  async #fetchGuildMembers(guildId) {
     const guild = this.#guild(guildId);
     if (!guild) return null;
 
     let members;
-    try {
-      members = await guild.members.fetch();
-    } catch (error) {
-      this.logger?.error('members', 'fetchGuildMembers', `Failed to fetch authoritative members for guild ${guildId}`, {
-        guildId,
-        error,
-      });
-      return null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        members = await guild.members.fetch();
+        break;
+      } catch (error) {
+        const retrySeconds = Number(error?.data?.retry_after);
+        if (error?.name === 'GatewayRateLimitError' && Number.isFinite(retrySeconds) && retrySeconds >= 0 && retrySeconds <= 30 && attempt < 2) {
+          this.logger?.warn('members', 'fetchGuildMembers', 'Discord rate-limited the member list. Waiting before retrying.', { guildId, retrySeconds });
+          await new Promise((resolve) => setTimeout(resolve, Math.ceil(retrySeconds * 1000) + 100));
+          continue;
+        }
+        this.logger?.error('members', 'fetchGuildMembers', `Failed to fetch authoritative members for guild ${guildId}`, { guildId, error });
+        return null;
+      }
     }
     if (!members || members.size === 0) return [];
 
@@ -114,6 +133,7 @@ class DiscordInviteGateway {
       id: member.id,
       guildId,
       username: member.user?.username || null,
+      legacyUsername: member.user?.discriminator && member.user.discriminator !== '0' ? `${member.user.username}#${member.user.discriminator}` : null,
       avatar: member.user?.displayAvatarURL?.({ dynamic: true }) || null,
       bot: Boolean(member.user?.bot),
       joinedAt: member.joinedAt ? member.joinedAt.toISOString() : null,
@@ -168,17 +188,17 @@ class DiscordInviteGateway {
   async resolveUser(userId) {
     if (!userId) return null;
     const cached = this.client?.users?.cache?.get(userId);
-    if (cached) return { id: cached.id, username: cached.username, avatar: cached.displayAvatarURL?.() || null };
+    if (cached) return { id: cached.id, username: cached.username, avatar: cached.displayAvatarURL?.() || null, bot: Boolean(cached.bot), accountCreatedAt: cached.createdAt?.toISOString() || null };
     try {
       const u = await this.client?.users?.fetch(userId);
-      if (u) return { id: u.id, username: u.username, avatar: u.displayAvatarURL?.() || null };
+      if (u) return { id: u.id, username: u.username, avatar: u.displayAvatarURL?.() || null, bot: Boolean(u.bot), accountCreatedAt: u.createdAt?.toISOString() || null };
     } catch {
       return null;
     }
     return null;
   }
 
-  async resolveUsers(userIds, { concurrency = DEFAULTS.operations.userResolveConcurrency } = {}) {
+  async resolveUsers(userIds, { concurrency = DEFAULTS.operations.userResolveConcurrency, onProgress = () => {} } = {}) {
     const ids = [...new Set((userIds || []).filter(Boolean).map(String))];
     const result = new Map();
     let cursor = 0;
@@ -186,6 +206,7 @@ class DiscordInviteGateway {
       while (cursor < ids.length) {
         const id = ids[cursor++];
         result.set(id, await this.resolveUser(id));
+        onProgress(result.size, ids.length);
       }
     };
     const workers = Array.from({ length: Math.min(concurrency, ids.length) }, () => worker());

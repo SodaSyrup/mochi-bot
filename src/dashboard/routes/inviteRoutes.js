@@ -7,6 +7,20 @@ const { DEFAULTS } = require('../../config/defaults');
 function createInviteRoutes({ inviteService, pagination = DEFAULTS.limits.pagination }) {
   const router = express.Router({ mergeParams: true });
 
+  router.post('/import-logs/preview', async (req, res) => {
+    const result = inviteService.logImporter.startPreview(req.params.guildId, req.body, req.session?.user?.id || req.sessionID);
+    res.status(202).json(result);
+  });
+
+  router.get('/import-logs/preview/:jobId', (req, res) => {
+    res.json(inviteService.logImporter.getPreviewJob(req.params.guildId, req.params.jobId, req.session?.user?.id || req.sessionID));
+  });
+
+  router.post('/import-logs/apply', async (req, res) => {
+    const result = await inviteService.logImporter.apply(req.params.guildId, req.body?.token, req.session?.user?.id || req.sessionID);
+    res.json(result);
+  });
+
   router.get('/leaderboard', async (req, res) => {
     const limit = parseBoundedInt(req.query.limit, { defaultValue: pagination.leaderboardDefault, min: 1, max: pagination.max, name: 'limit' });
     const page = parseBoundedInt(req.query.page, { defaultValue: 1, min: 1, max: pagination.maxPage, name: 'page' });

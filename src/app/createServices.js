@@ -1,6 +1,8 @@
 const { GuildRepository } = require('../features/guilds/infrastructure/guildRepository');
 const { InviteRepository } = require('../features/invites/infrastructure/inviteRepository');
 const { InviteService } = require('../features/invites/application/inviteService');
+const { InviteLogImportService } = require('../features/invites/application/inviteLogImportService');
+const { InviteLogImportRepository } = require('../features/invites/infrastructure/inviteLogImportRepository');
 const { createInvitePolicy } = require('../features/invites/domain/invitePolicy');
 const { GuildService } = require('../features/guilds/guildService');
 const { SafetyService } = require('../features/safety/safetyService');
@@ -84,6 +86,12 @@ function createServices({ config, db, eventBus, client, logger, gatewayOverrides
     limits: config.limits,
   });
   const safety = new SafetyService({ safetyGateway, eventBus, logger });
+  invites.logImporter = new InviteLogImportService({
+    repository: new InviteLogImportRepository(db),
+    inviteService: invites,
+    inviteLogGateway,
+    guildRepository,
+  });
   const inviteLogs = new InviteLogService({
     guildRepository,
     inviteLogRepository,

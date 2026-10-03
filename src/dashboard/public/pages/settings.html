@@ -65,6 +65,59 @@
             </div>
           </section>
 
+          <section class="section">
+            <div class="section-header">
+              <div>
+                <h3 class="section-title">Import invite data</h3>
+                <p class="section-description">Recover missing inviters from InviteLogger messages or user log embeds.</p>
+              </div>
+            </div>
+            <div class="panel">
+              <form id="invite-import-form" onsubmit="settingsPage.previewInviteImport(event)">
+                <div class="form-group">
+                  <label class="form-label" for="setting-import-format">Log format</label>
+                  <select id="setting-import-format" class="form-control">
+                    <option value="invite-logger">InviteLogger messages</option>
+                    <option value="user-logs">User logs — joined, left, and updated</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="setting-import-channel">Source channel</label>
+                  <select id="setting-import-channel" class="form-control">
+                    <option value="">Use saved invite log channel</option>
+                  </select>
+                  <div class="form-help">For user logs, select the channel that contains the member log embeds.</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="setting-import-bot">Source bot user ID (optional)</label>
+                  <input id="setting-import-bot" class="form-control" type="text" inputmode="numeric" pattern="[0-9]{17,20}" maxlength="20">
+                  <div class="form-help">Leave blank to find InviteLogger or Salad Bot in this server. Enter its user ID if the bot has left or changed its name.</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="setting-import-limit">Channel messages to scan</label>
+                  <input id="setting-import-limit" class="form-control" type="number" min="1" max="5000" value="1000" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="setting-import-unknown-inviter">Assign unknown inviters in user logs to this user ID</label>
+                  <input id="setting-import-unknown-inviter" class="form-control" type="text" inputmode="numeric" pattern="[0-9]{17,20}" maxlength="20" value="772509343916359740">
+                  <div class="form-help">Applies only when Invited By says Unknown or Unkown in user logs. Clear this field to skip those entries. The preview marks each assumed inviter.</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="setting-import-before">Read messages before this message ID (optional)</label>
+                  <input id="setting-import-before" class="form-control" type="text" inputmode="numeric" pattern="[0-9]{17,20}" maxlength="20">
+                  <div class="form-help">Leave blank to start with the newest messages.</div>
+                </div>
+                <p class="form-help">Old usernames must match one current server member. Review each name match because usernames can change. Known inviters and fake-account flags are kept. Unmatched history is skipped.</p>
+                <p class="form-help">User logs use User ID, Invited By, Joined At (or Joined), and Left At. Joined and left logs can restore missing history. Updated logs repair inviter data. Updated By does not identify the inviter.</p>
+                <button type="submit" class="button button-secondary" id="btn-preview-invite-import" disabled>Preview import</button>
+              </form>
+              <p id="invite-import-summary" role="status" aria-live="polite"></p>
+              <div id="invite-import-preview"></div>
+              <button type="button" class="button button-primary" id="btn-apply-invite-import" onclick="settingsPage.applyInviteImport()" disabled>Apply preview</button>
+              <button type="button" class="button button-secondary" id="btn-older-invite-import" onclick="settingsPage.previewOlderInviteImport()" disabled>Preview older messages</button>
+            </div>
+          </section>
+
           <section class="section" id="setup-instructions">
             <div class="section-header">
               <h3 class="section-title">Connecting to Discord</h3>
@@ -90,6 +143,6 @@
   <script src="/js/constants.js"></script>
   <script src="/js/layout.js"></script>
   <script src="/js/shared.js"></script>
-  <script src="/js/pages/settings.js"></script>
+  <script src="/js/pages/settings.js?v=import-jobs-20261003"></script>
 </body>
 </html>
