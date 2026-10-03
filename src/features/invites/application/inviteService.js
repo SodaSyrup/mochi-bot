@@ -1,6 +1,6 @@
 const { AttributionType } = require('../domain/attribution');
 const { createInvitePolicy } = require('../domain/invitePolicy');
-const { resolveAttribution } = require('./inviteAttributionService');
+const { analyzeAttribution } = require('./inviteAttributionService');
 const { GuildSerialQueue } = require('./guildSerialQueue');
 const { InviteEvents } = require('../../../app/eventBus');
 const { discordInviteUrl, discordDefaultAvatar } = require('../../../platform/discord/urls');
@@ -22,6 +22,8 @@ class InviteService {
     // These caches can be rebuilt from Discord; the database remains the source of record.
     this.invitesCache = new Map(); // guildId -> Map<code, snapshot>
     this.attributionCache = new Map(); // guildId -> Map<code, snapshot>; never replaced by dashboard reads
+    this.deletedInvites = new Map(); // guildId -> Map<code, {invite, deletedAt}>
+    this.attributionObservedAt = new Map();
     this.attributionVanityCache = new Map();
     this.vanityCache = new Map(); // guildId -> number|null
     this.memberInfo = new Map(); // guildId -> Map<userId, {username, avatar}>
@@ -107,6 +109,121 @@ class InviteService {
     for (const inv of snapshot.invites) map.set(inv.code, inv);
     this.attributionCache.set(guildId, map);
     this.attributionVanityCache.set(guildId, snapshot.vanityUses ?? null);
+    this.attributionObservedAt.set(guildId, Date.now());
+  }
+
+  #recentDeletedInvites(guildId) {
+    const deleted = this.deletedInvites.get(guildId);
+    if (!deleted) return [];
+    const cutoff = Date.now() - DEFAULTS.operations.deletedInviteRetentionMs;
+    for (const [code, entry] of deleted) {
+      if (entry.deletedAt < cutoff) deleted.delete(code);
+    }
+    if (deleted.size === 0) this.deletedInvites.delete(guildId);
+    return Array.from(deleted.values());
+  }
+
+  #singleUseCandidates(guildId, previous, snapshot, joinedAt) {
+    const now = Date.now();
+    const joined = new Date(joinedAt).getTime();
+    const retention = DEFAULTS.operations.deletedInviteRetentionMs;
+    if (!Number.isFinite(joined) || Math.abs(now - joined) > retention) return [];
+    const currentCodes = new Set(snapshot.invites.map((invite) => invite.code));
+    const deleted = new Map(this.#recentDeletedInvites(guildId).map((entry) => [entry.invite.code, entry]));
+    const candidates = new Map();
+    for (const invite of [...previous, ...Array.from(deleted.values(), (entry) => entry.invite)]) {
+      if (currentCodes.has(invite.code) || invite.maxUses !== 1 || invite.uses !== 0) continue;
+      const deletion = deleted.get(invite.code);
+      if (!deletion && now - (this.attributionObservedAt.get(guildId) || 0) > retention) continue;
+      if (deletion && Math.abs(deletion.deletedAt - joined) > retention) continue;
+      const expires = invite.expiresAt ? new Date(invite.expiresAt).getTime()
+        : invite.maxAge > 0 ? new Date(invite.createdAt).getTime() + invite.maxAge * 1000 : null;
+      // Reject expired links and incomplete expiry metadata.
+      if (expires !== null && (!Number.isFinite(expires) || expires <= now)) continue;
+      candidates.set(invite.code, invite);
+    }
+    return Array.from(candidates.values());
+  }
+
+  async #resolveJoinAttribution(memberData) {
+    const guildId = memberData.guildId;
+    const previous = Array.from(this.attributionCache.get(guildId)?.values() || []);
+    const previousVanity = this.attributionVanityCache.get(guildId);
+    let latestSnapshot = null;
+    let decision = null;
+    let candidates = [];
+    let lastFetchSucceeded = false;
+    const attempts = DEFAULTS.operations.inviteAttributionAttempts;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      let snapshot = null;
+      try {
+        snapshot = await this.gateway.fetchGuildInvites(guildId);
+      } catch (error) {
+        this.#log('invites', 'trackJoin', 'Invite fetch threw during attribution', {
+          guildId, userId: memberData.id, error, level: 'error',
+        });
+      }
+      if (snapshot) {
+        lastFetchSucceeded = true;
+        latestSnapshot = snapshot;
+        candidates = this.#singleUseCandidates(guildId, previous, snapshot, memberData.joinedAt);
+        decision = analyzeAttribution({
+          previous, current: snapshot.invites,
+          previousVanityUses: previousVanity, currentVanityUses: snapshot.vanityUses,
+          singleUseCandidates: candidates,
+        });
+        if (!decision.retryable) break;
+      } else {
+        lastFetchSucceeded = false;
+      }
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, DEFAULTS.operations.inviteAttributionRetryDelayMs));
+      }
+    }
+
+    if (decision?.reason === 'SINGLE_USE_PENDING') {
+      // A vanished link is only a fallback. Manual deletion checks must be
+      // available, and a vanity URL must have a complete usage baseline.
+      const vanityUnavailable = latestSnapshot.vanityUnavailable
+        || (latestSnapshot.vanityUses != null && previousVanity == null);
+      let revoked = null;
+      if (lastFetchSucceeded && !vanityUnavailable && typeof this.gateway.fetchRecentInviteDeletions === 'function') {
+        try {
+          revoked = await this.gateway.fetchRecentInviteDeletions(guildId, Date.now() - DEFAULTS.operations.deletedInviteRetentionMs);
+        } catch (error) {
+          this.#log('invites', 'trackJoin', 'Invite deletion check failed', { guildId, userId: memberData.id, error, level: 'error' });
+        }
+      }
+      if (revoked && !revoked.includes(candidates[0].code)) {
+        decision = analyzeAttribution({
+          previous, current: latestSnapshot.invites,
+          previousVanityUses: previousVanity, currentVanityUses: latestSnapshot.vanityUses,
+          singleUseCandidates: candidates, verifiedSingleUseCodes: [candidates[0].code],
+        });
+      } else {
+        decision.reason = !lastFetchSucceeded ? 'FETCH_FAILED' : vanityUnavailable ? 'VANITY_UNAVAILABLE'
+          : revoked ? 'INVITE_MANUALLY_DELETED' : 'DELETION_CHECK_UNAVAILABLE';
+      }
+    }
+
+    // Advance the baseline only once, after retries. Failed fetches cannot
+    // erase the last successful snapshot or a decision already made from it.
+    if (latestSnapshot) this.#storeSnapshot(guildId, latestSnapshot);
+    if (latestSnapshot) {
+      const currentCodes = new Set(latestSnapshot.invites.map((invite) => invite.code));
+      const deleted = this.deletedInvites.get(guildId);
+      for (const invite of candidates) {
+        if (!currentCodes.has(invite.code)) deleted?.delete(invite.code);
+      }
+      this.#recentDeletedInvites(guildId);
+    }
+    if (!decision) {
+      decision = { attribution: { type: AttributionType.UNKNOWN, inviterId: null, inviteCode: null }, reason: 'FETCH_FAILED' };
+    } else if (!lastFetchSucceeded) {
+      decision.reason = 'FETCH_FAILED';
+    }
+    this.#log('invites', 'trackJoin', `Invite attribution ${decision.reason}`, { guildId, userId: memberData.id });
+    return decision.attribution;
   }
 
   async reconcileGuildMembers(guildId) {
@@ -147,36 +264,7 @@ class InviteService {
 
       let attribution = attributionOverride;
       if (!attribution) {
-        const previous = this.attributionCache.get(memberData.guildId);
-        const previousVanity = this.attributionVanityCache?.get(memberData.guildId);
-        let snapshot = null;
-        try {
-          snapshot = await this.gateway.fetchGuildInvites(memberData.guildId);
-        } catch (err) {
-          this.#log('invites', 'trackJoin', `Invite fetch threw for guild ${memberData.guildId}; attribution UNKNOWN`, {
-            guildId: memberData.guildId,
-            userId: memberData.id,
-            error: err,
-          });
-        }
-
-        if (!snapshot) {
-          // Could not fetch invite state — record an explicit UNKNOWN rather
-          // than guessing an inviter. The join itself is still processed.
-          this.#log('invites', 'trackJoin', `Invite fetch failed for guild ${memberData.guildId}; attribution UNKNOWN`, {
-            guildId: memberData.guildId,
-            userId: memberData.id,
-          });
-          attribution = { type: AttributionType.UNKNOWN, inviterId: null, inviteCode: null };
-        } else {
-          attribution = resolveAttribution({
-            previous: previous ? Array.from(previous.values()) : [],
-            current: snapshot.invites,
-            previousVanityUses: previousVanity,
-            currentVanityUses: snapshot.vanityUses,
-          });
-          this.#storeSnapshot(memberData.guildId, snapshot);
-        }
+        attribution = await this.#resolveJoinAttribution(memberData);
       }
 
       const isFake = this.policy.isSuspiciousAccount({
@@ -287,7 +375,7 @@ class InviteService {
   }
 
   handleInviteCreated(inviteData) {
-    const { guildId, code, uses, maxUses, inviterId, channelId, channelName, createdAt } = inviteData;
+    const { guildId, code, uses, maxUses, maxAge, inviterId, channelId, channelName, createdAt, expiresAt } = inviteData;
     if (!guildId || !code) return;
     const cache = this.invitesCache.get(guildId) || new Map();
     cache.set(code, {
@@ -295,11 +383,14 @@ class InviteService {
       uses: uses || 0,
       inviterId: inviterId || null,
       maxUses: maxUses || 0,
+      maxAge: maxAge || 0,
       channelId: channelId || null,
       channelName: channelName || null,
       createdAt: createdAt || new Date().toISOString(),
+      expiresAt: expiresAt || null,
     });
     this.invitesCache.set(guildId, cache);
+    this.deletedInvites.get(guildId)?.delete(code);
     const attribution = this.attributionCache.get(guildId);
     if (attribution) attribution.set(code, cache.get(code));
   }
@@ -307,6 +398,12 @@ class InviteService {
   handleInviteDeleted(inviteData) {
     const { guildId, code } = inviteData;
     if (!guildId || !code) return;
+    this.#recentDeletedInvites(guildId);
+    const invite = this.attributionCache.get(guildId)?.get(code);
+    if (invite) {
+      if (!this.deletedInvites.has(guildId)) this.deletedInvites.set(guildId, new Map());
+      this.deletedInvites.get(guildId).set(code, { invite, deletedAt: Date.now() });
+    }
     this.invitesCache.get(guildId)?.delete(code);
     this.attributionCache.get(guildId)?.delete(code);
   }
@@ -317,6 +414,8 @@ class InviteService {
   forgetGuild(guildId) {
     this.invitesCache.delete(guildId);
     this.attributionCache.delete(guildId);
+    this.deletedInvites.delete(guildId);
+    this.attributionObservedAt.delete(guildId);
     this.vanityCache.delete(guildId);
     this.attributionVanityCache?.delete(guildId);
     this.memberInfo.delete(guildId);
@@ -375,6 +474,9 @@ class InviteService {
     this.invites.deleteCachedInvite(guildId, code);
     this.invites.deleteInviteLabel(guildId, code);
     this.invitesCache.get(guildId)?.delete(code);
+    // A dashboard revocation must never become a single-use candidate.
+    this.attributionCache.get(guildId)?.delete(code);
+    this.deletedInvites.get(guildId)?.delete(code);
     this.eventBus.emit(InviteEvents.InviteDeleted, { guildId, code, occurredAt: new Date().toISOString() });
     return { code };
   }

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Mochi is a Discord bot for invite tracking, join and leave logs, and server moderation.">
+  <meta name="theme-color" content="#111214">
+  <title>Mochi · Discord invite tracking</title>
+  <link rel="stylesheet" href="/css/foundation.css">
+  <link rel="stylesheet" href="/css/landing.css?v=3">
+  <script src="/js/landing.js?v=3" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="landing-header wrap">
+    <a class="brand" href="/" aria-label="Mochi home"><span aria-hidden="true">🍡</span> Mochi</a>
+    <nav aria-label="Main navigation">
+      <a href="/dashboard">Dashboard</a>
+    </nav>
+  </header>
+
+  <main id="main" class="wrap">
+    <div id="auth-notice" role="alert" hidden></div>
+    <section class="intro" aria-labelledby="intro-title">
+      <h1 id="intro-title">Invite tracking<br>for Discord.</h1>
+      <p class="intro-copy">Mochi tracks who invited each member, records joins and leaves, and keeps a server invite leaderboard.</p>
+      <div class="intro-actions">
+        <a class="action" href="/auth/login" data-login>Sign in with Discord</a>
+      </div>
+    </section>
+
+    <section class="features" id="features" aria-labelledby="features-title">
+      <h2 id="features-title">What Mochi does</h2>
+      <article class="feature-row">
+        <h3>Invite tracking</h3>
+        <div><p>Check each member's net invite count. Label invite codes by campaign. Leaves and suspicious accounts reduce the total.</p><p class="detail">Joins are marked as unknown when Mochi cannot identify the invite.</p></div>
+        <div class="commands"><span>In Discord</span><code>/invites</code><code>/leaderboard</code><code>/invite-label</code></div>
+      </article>
+      <article class="feature-row">
+        <h3>Server activity</h3>
+        <div><p>View live member activity, invite use counts, and join and leave trends. Send join and leave logs to a Discord channel.</p></div>
+        <div class="page-links"><span>In the dashboard</span><a href="/analytics">Analytics</a><a href="/codes">Invite links</a><a href="/settings">Invite log settings</a></div>
+      </article>
+      <article class="feature-row">
+        <h3>Moderation</h3>
+        <div><p>Edit Discord AutoMod rules. Set up a honeypot channel. Apply the same role permissions to multiple channel categories. Enable or disable plugins per server.</p></div>
+        <div class="page-links"><span>In the dashboard</span><a href="/safety">Safety</a><a href="/permission-groups">Permission groups</a><a href="/plugins">Plugins</a></div>
+      </article>
+    </section>
+
+    <section class="access" aria-labelledby="access-title">
+      <h2 id="access-title">Dashboard access</h2>
+      <div><p>Mochi must be in your server. You need the <strong>Manage Server</strong> permission to use its dashboard and change settings.</p></div>
+    </section>
+  </main>
+
+</body>
+</html>

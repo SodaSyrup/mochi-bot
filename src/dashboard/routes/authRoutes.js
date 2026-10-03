@@ -78,7 +78,7 @@ function createAuthRoutes({ oauthClient, config, logger, invalidateSession = nul
       if (bypassEnabled && loopback) {
         logger?.warn('auth', 'login', 'Development login: DEV_AUTH_BYPASS enabled, using development admin session (loopback only).');
         req.session.user = developmentUser();
-        return res.redirect('/');
+        return res.redirect('/dashboard');
       }
       logger?.warn('auth', 'login', 'OAuth not configured; development bypass disabled or non-loopback request.');
       return res.redirect('/?error=oauth_not_configured');
@@ -153,7 +153,7 @@ function createAuthRoutes({ oauthClient, config, logger, invalidateSession = nul
       req.session.user = authenticatedUser;
       req.session.discordOAuth = oauthMaterial;
 
-      res.redirect('/');
+      res.redirect('/dashboard');
     } catch (err) {
       logger?.error('auth', 'callback', 'OAuth callback failed', { error: err });
       res.redirect('/?error=auth_failed');

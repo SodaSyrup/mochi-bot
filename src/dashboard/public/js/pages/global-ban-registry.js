@@ -14,6 +14,7 @@
     recommendationRequestId: 0,
 
     async init() {
+      global.Mochi?.onGuildChange?.((guildId) => this.loadRecommendations(true, guildId));
       try {
         this.csrfToken = (await apiFetch('/api/global-ban-registry/csrf')).token;
         await Promise.all([this.refreshSummary(), this.loadEntries(true), this.loadPending(true), this.loadEvents(), this.loadRecommendations(true)]);
@@ -29,7 +30,6 @@
       document.getElementById('registry-rows')?.addEventListener('click', (event) => this.handleAction(event));
       document.getElementById('registry-pending-rows')?.addEventListener('click', (event) => this.handleAction(event));
       document.getElementById('registry-recommendations')?.addEventListener('click', (event) => this.handleRecommendationAction(event));
-      global.Mochi?.onGuildChange?.((guildId) => this.loadRecommendations(true, guildId));
     },
 
     async refresh() {

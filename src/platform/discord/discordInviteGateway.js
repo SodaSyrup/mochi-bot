@@ -1,4 +1,4 @@
-const { ChannelType } = require('discord.js');
+const { ChannelType, AuditLogEvent } = require('discord.js');
 const { DEFAULTS } = require('../../config/defaults');
 
 /** Converts Discord invite objects to the DTOs used by the invite service. */
@@ -68,7 +68,30 @@ class DiscordInviteGateway {
       }
     }
 
-    return { invites, vanityUses };
+    return { invites, vanityUses, vanityUnavailable: Boolean(guild.features?.includes('VANITY_URL') && vanityUses == null) };
+  }
+
+  /** Return revoked codes, or null if the recent audit window is incomplete. */
+  async fetchRecentInviteDeletions(guildId, since) {
+    const guild = this.#guild(guildId);
+    if (!guild?.members?.me?.permissions?.has('ViewAuditLog')) return null;
+    try {
+      const after = ((BigInt(Math.floor(since)) - 1420070400000n) << 22n).toString();
+      const audit = await guild.fetchAuditLogs({ type: AuditLogEvent.InviteDelete, after, limit: 100 });
+      if (!audit?.entries || audit.entries.size >= 100) return null;
+      const codes = [];
+      for (const entry of audit.entries.values()) {
+        const change = entry.changes?.find((item) => item.key === 'code');
+        const code = change?.old ?? change?.new ?? entry.target?.code;
+        // An unidentified revocation may be the link under consideration.
+        if (!code) return null;
+        codes.push(code);
+      }
+      return codes;
+    } catch (error) {
+      this.logger?.error('invites', 'fetchInviteDeletions', `Failed to check invite deletions for guild ${guildId}`, { guildId, error });
+      return null;
+    }
   }
 
   async fetchGuildMembers(guildId) {

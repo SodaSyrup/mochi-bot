@@ -2,11 +2,18 @@
 
 The dashboard uses Discord OAuth2 and authorizes access per server. It lists only servers that the signed-in user can manage and that Mochi has joined.
 
+Dashboard links change the page content without reloading the sidebar, server
+selector, or live connection. Browser Back and Forward work with these links.
+Each visited page stays loaded until you refresh or leave the dashboard. The
+server checks page access on each tab change. Normal links still work when
+opened in a new tab.
+
 ## Pages
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Server overview, quick stats, and live event feed |
+| `/` | Public landing page with features and Discord sign-in |
+| `/dashboard` | Server overview, quick stats, and live event feed |
 | `/analytics` | Seven-day join-versus-leave trends and conversion metrics |
 | `/leaderboard` | Complete server inviter rankings |
 | `/codes` | Active invite codes, usage counters, and custom labels |

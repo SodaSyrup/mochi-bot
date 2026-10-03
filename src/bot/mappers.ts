@@ -3,8 +3,7 @@ function mapDiscordMember(member: any) {
 }
 
 function mapDiscordInvite(invite: any) {
-  return { guildId: invite.guild?.id || null, code: invite.code, uses: invite.uses || 0, maxUses: invite.maxUses || 0, inviterId: invite.inviter?.id || null, channelId: invite.channel?.id || null, channelName: invite.channel?.name || null, createdAt: invite.createdAt ? invite.createdAt.toISOString() : null };
+  return { guildId: invite.guild?.id || null, code: invite.code, uses: invite.uses || 0, maxUses: invite.maxUses || 0, maxAge: invite.maxAge || 0, inviterId: invite.inviter?.id || null, channelId: invite.channel?.id || null, channelName: invite.channel?.name || null, createdAt: invite.createdAt ? invite.createdAt.toISOString() : null, expiresAt: invite.expiresAt ? invite.expiresAt.toISOString() : null };
 }
 
 module.exports = { mapDiscordMember, mapDiscordInvite };
-

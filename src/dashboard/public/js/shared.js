@@ -201,6 +201,7 @@ class MochiSharedCore {
 
     this.currentGuildId = guildId;
     localStorage.setItem(MOCHI_CONSTANTS.storage.selectedGuild, guildId);
+    window.MochiLayout?.updateNavigationGuild?.();
 
     if (this.socket) {
       this.socket.emit('joinGuild', guildId, (response) => {
@@ -235,7 +236,10 @@ class MochiSharedCore {
    * Register a callback to be run when the active guild is loaded or changes
    */
   onGuildChange(callback) {
-    this.guildChangeCallbacks.push(callback);
+    const page = document.body.dataset.page;
+    this.guildChangeCallbacks.push((guildId) => {
+      if (document.body.dataset.page === page) callback(guildId);
+    });
     if (this.currentGuildId) {
       callback(this.currentGuildId);
     }
@@ -246,8 +250,16 @@ class MochiSharedCore {
    */
   onRealtime(event, callback) {
     if (this.realtimeCallbacks[event]) {
-      this.realtimeCallbacks[event].push(callback);
+      const page = document.body.dataset.page;
+      this.realtimeCallbacks[event].push((data) => {
+        if (document.body.dataset.page === page) callback(data);
+      });
     }
+  }
+
+  refreshPage() {
+    if (!this.currentGuildId) return;
+    for (const callback of this.guildChangeCallbacks) callback(this.currentGuildId);
   }
 
   triggerRealtime(event, data) {

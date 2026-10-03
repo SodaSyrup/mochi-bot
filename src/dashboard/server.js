@@ -116,6 +116,7 @@ class DashboardServer {
 
     const pagesDir = path.join(__dirname, 'public', 'pages');
     const page = (file) => (_req, res) => res.sendFile(file);
+    this.app.get('/', page(path.join(pagesDir, 'landing.html')));
     const pageAccess = (access) => {
       if (!access || access.kind === 'public') return [];
       if (access.kind === 'capability') return [requireAuth, requireCapability(access.capability, this.capabilities)];
@@ -146,7 +147,7 @@ class DashboardServer {
     } else {
       // Compatibility path for direct DashboardServer construction without a
       // plugin registry; normal application startup uses page contributions.
-      this.app.get('/', page(path.join(pagesDir, 'overview.html')));
+      this.app.get('/dashboard', page(path.join(pagesDir, 'overview.html')));
       this.app.get('/analytics', page(path.join(pagesDir, 'analytics.html')));
       this.app.get('/leaderboard', page(path.join(pagesDir, 'leaderboard.html')));
       this.app.get('/codes', page(path.join(pagesDir, 'codes.html')));

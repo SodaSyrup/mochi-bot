@@ -8,6 +8,10 @@
   min-height: 100vh;
 }
 
+.page-container[hidden], [data-page-dialogs][hidden] {
+  display: none !important;
+}
+
 /* ---------------------------------------------------------------- sidebar */
 aside.sidebar {
   width: var(--sidebar-width);

@@ -10,8 +10,7 @@ module.exports = {
   migrations: [],
   register(context: any) {
     for (const command of commands) context.commands.register(command, { source: `src/bot/commands/utility/${command.data.name}.js` });
-    context.pages.register({ id: 'overview', path: '/', file: 'overview.html' });
+    context.pages.register({ id: 'overview', path: '/dashboard', file: 'overview.html' });
     context.pages.register({ id: 'settings', path: '/settings', file: 'settings.html' });
   },
 };
-

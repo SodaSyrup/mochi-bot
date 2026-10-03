@@ -42,6 +42,9 @@ const DEFAULTS = Object.freeze({
     auditAttempts: 3,
     auditRetryDelayMs: 500,
     auditBatchLimit: 10,
+    inviteAttributionAttempts: 3,
+    inviteAttributionRetryDelayMs: 500,
+    deletedInviteRetentionMs: 30 * 1000,
   }),
   honeypot: Object.freeze({ softBanDeleteMessageSeconds: 24 * 60 * 60 }),
   globalBans: Object.freeze({

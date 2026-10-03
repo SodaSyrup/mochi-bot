@@ -18,7 +18,7 @@ bun run deploy-commands
 bun dev
 ```
 
-The dashboard is available at <http://localhost:3000>. Configure `.env` before deployment. Production checks more settings at startup than development.
+The landing page is available at <http://localhost:3000>. Open the dashboard at <http://localhost:3000/dashboard>. Configure `.env` before deployment. Production checks more settings at startup than development.
 
 ## What Mochi provides
 

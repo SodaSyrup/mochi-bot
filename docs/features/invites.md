@@ -34,6 +34,25 @@ Membership attribution is stored independently of Discord user IDs:
 
 `inviter_id` means exactly one thing: a Discord user ID, or `null`.
 
+### Single-use invites
+
+Discord can remove a single-use invite before Mochi reads its final use count.
+Mochi keeps deleted-invite details for 30 seconds. It checks unresolved joins
+up to three times, with 500 milliseconds between checks.
+
+A disappeared invite can be credited when it had zero uses and a one-use
+limit, has not expired, disappeared near the join, and is the only candidate.
+Mochi also checks the recent Discord audit log for manual deletion. This
+fallback requires **View Audit Log**. Missing or incomplete audit data,
+conflicting invite changes, or unavailable vanity usage keep the result
+UNKNOWN. Dashboard revocations are excluded.
+
+This fallback is an inference from invite state. Discord does not provide the
+invite code in a member join event. A delayed audit entry or missing gateway
+events can still prevent a correct match. Recent deleted-invite data is kept
+in memory and does not survive a restart. Mochi logs the decision reason for
+each live join.
+
 ## Invite labels
 
 Assign labels such as `twitter-campaign` or `youtube-promo` to invite codes with
